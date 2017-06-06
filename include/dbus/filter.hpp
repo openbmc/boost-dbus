@@ -6,11 +6,11 @@
 #ifndef DBUS_FILTER_HPP
 #define DBUS_FILTER_HPP
 
-#include <boost/asio.hpp>
+#include <dbus/connection.hpp>
 #include <dbus/detail/queue.hpp>
 #include <dbus/message.hpp>
-#include <dbus/connection.hpp>
-#include <dbus/functional.hpp>
+#include <functional>
+#include <boost/asio.hpp>
 
 namespace dbus {
 
@@ -18,53 +18,39 @@ namespace dbus {
 /**
  * Filters examine incoming messages, demuxing them to multiple queues.
  */
-class filter
-{
+class filter {
   connection& connection_;
-  function<bool(message&)> predicate_;
+  std::function<bool(message&)> predicate_;
   detail::queue<message> queue_;
 
-public:
-
-  bool offer(message& m)
-  {
+ public:
+  bool offer(message& m) {
     bool filtered = predicate_(m);
-    if(filtered) queue_.push(m);
+    if (filtered) queue_.push(m);
     return filtered;
   }
 
-  template<typename MessagePredicate>
-  filter(connection& c,
-      BOOST_ASIO_MOVE_ARG(MessagePredicate) p)
-    : connection_(c),
-      predicate_(BOOST_ASIO_MOVE_CAST(MessagePredicate)(p)),
-      queue_(connection_.get_io_service())
-  {
+  template <typename MessagePredicate>
+  filter(connection& c, BOOST_ASIO_MOVE_ARG(MessagePredicate) p)
+      : connection_(c),
+        predicate_(BOOST_ASIO_MOVE_CAST(MessagePredicate)(p)),
+        queue_(connection_.get_io_service()) {
     connection_.new_filter(*this);
   }
 
-  ~filter()
-  {
-    connection_.delete_filter(*this);
-  }
+  ~filter() { connection_.delete_filter(*this); }
 
-  template<typename MessageHandler>
+  template <typename MessageHandler>
   inline BOOST_ASIO_INITFN_RESULT_TYPE(MessageHandler,
-      void(boost::system::error_code, message))
-  async_dispatch(
-      BOOST_ASIO_MOVE_ARG(MessageHandler) handler)
-  {
+                                       void(boost::system::error_code, message))
+      async_dispatch(BOOST_ASIO_MOVE_ARG(MessageHandler) handler) {
     // begin asynchronous operation
-    connection_.get_implementation().start(
-      connection_.get_io_service());
+    connection_.get_implementation().start(connection_.get_io_service());
 
-    return queue_.async_pop(
-      BOOST_ASIO_MOVE_CAST(MessageHandler)(handler));
+    return queue_.async_pop(BOOST_ASIO_MOVE_CAST(MessageHandler)(handler));
   }
-
 };
-} // namespace dbus
-
+}  // namespace dbus
 
 #include <dbus/impl/filter.ipp>
-#endif // DBUS_FILTER_HPP
+#endif  // DBUS_FILTER_HPP

@@ -14,20 +14,14 @@
 namespace dbus {
 namespace impl {
 
-class connection
-{
-public:
+class connection {
+ public:
   boost::atomic<bool> is_paused;
-  DBusConnection *conn;
+  DBusConnection* conn;
 
-  connection()
-    : is_paused(true),
-      conn(NULL)
-  {
-  }
+  connection() : is_paused(true), conn(NULL) {}
 
-  void open(boost::asio::io_service& io, int bus)
-  {
+  void open(boost::asio::io_service& io, int bus) {
     error e;
     conn = dbus_bus_get_private((DBusBusType)bus, e);
     e.throw_if_set();
@@ -37,8 +31,7 @@ public:
     detail::set_watch_timeout_dispatch_functions(conn, io);
   }
 
-  void open(boost::asio::io_service& io, const string& address)
-  {
+  void open(boost::asio::io_service& io, const string& address) {
     error e;
     conn = dbus_connection_open_private(address.c_str(), e);
     e.throw_if_set();
@@ -51,55 +44,42 @@ public:
     detail::set_watch_timeout_dispatch_functions(conn, io);
   }
 
-  ~connection()
-  {
+  ~connection() {
     if (conn != NULL) {
       dbus_connection_close(conn);
       dbus_connection_unref(conn);
     }
   }
 
-  operator DBusConnection *()
-  {
-    return conn;
-  }
-  operator const DBusConnection *() const
-  {
-    return conn;
-  }
+  operator DBusConnection*() { return conn; }
+  operator const DBusConnection*() const { return conn; }
 
   message send_with_reply_and_block(message& m,
-      int timeout_in_milliseconds = -1)
-  {
+                                    int timeout_in_milliseconds = -1) {
     error e;
-    message reply(dbus_connection_send_with_reply_and_block(conn,
-        m, timeout_in_milliseconds, e));
-
+    DBusMessage* out = dbus_connection_send_with_reply_and_block(
+        conn, m, timeout_in_milliseconds, e);
     e.throw_if_set();
+    message reply(out);
+
     return reply;
   }
 
-  void send(message& m)
-  {
+  void send(message& m) {
     // ignoring message serial for now
     dbus_connection_send(conn, m, NULL);
   }
 
-  void send_with_reply(message& m,
-      DBusPendingCall **p,
-      int timeout_in_milliseconds = -1)
-  {
-    dbus_connection_send_with_reply(conn,
-        m, p, timeout_in_milliseconds);
+  void send_with_reply(message& m, DBusPendingCall** p,
+                       int timeout_in_milliseconds = -1) {
+    dbus_connection_send_with_reply(conn, m, p, timeout_in_milliseconds);
   }
 
   // begin asynchronous operation
-  //FIXME should not get io from an argument
-  void start(boost::asio::io_service& io)
-  {
+  // FIXME should not get io from an argument
+  void start(boost::asio::io_service& io) {
     bool old_value(true);
-    if(is_paused.compare_exchange_strong(old_value, false))
-    {
+    if (is_paused.compare_exchange_strong(old_value, false)) {
       // If two threads call connection::async_send()
       // simultaneously on a paused connection, then
       // only one will pass the CAS instruction and
@@ -108,17 +88,15 @@ public:
     }
   }
 
-  void cancel(boost::asio::io_service& io)
-  {
+  void cancel(boost::asio::io_service& io) {
     bool old_value(false);
-    if(is_paused.compare_exchange_strong(old_value, true))
-    {
-      //TODO
+    if (is_paused.compare_exchange_strong(old_value, true)) {
+      // TODO
     }
   }
 };
 
-} // namespace impl
-} // namespace dbus
+}  // namespace impl
+}  // namespace dbus
 
-#endif // DBUS_CONNECTION_IPP
+#endif  // DBUS_CONNECTION_IPP

@@ -5,6 +5,9 @@
 
 project(boost-dbus CXX)
 
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 ###############
 # CMake options
 cmake_minimum_required(VERSION 2.8)
@@ -37,14 +40,11 @@ include_directories(${GTEST_INCLUDE_DIRS})
 # Tests
 enable_testing()
 
-function(cxx_test test_name)
-  add_executable(${test_name} "test/${test_name}.cpp")
-  target_link_libraries(${test_name} ${Boost_LIBRARIES})
-  target_link_libraries(${test_name} ${DBus_LIBRARIES})
-  target_link_libraries(${test_name} ${GTEST_BOTH_LIBRARIES})
-  target_link_libraries(${test_name} -pthread)
-  add_test(${test_name} ${test_name} "--gtest_output=xml:${test_name}.xml")
-endfunction(cxx_test)
 
-cxx_test(avahi)
-cxx_test(message)
+add_executable(dbustests "test/avahi.cpp" "test/message.cpp")
+target_link_libraries(dbustests ${Boost_LIBRARIES})
+target_link_libraries(dbustests ${DBus_LIBRARIES})
+target_link_libraries(dbustests ${GTEST_BOTH_LIBRARIES})
+target_link_libraries(dbustests -pthread)
+add_test(dbustests dbustests "--gtest_output=xml:${test_name}.xml")
+

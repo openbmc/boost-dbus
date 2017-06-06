@@ -12,40 +12,23 @@
 
 namespace dbus {
 
-class endpoint
-{
+class endpoint {
   string process_name_;
   string path_;
   string interface_;
 
-public:
-  endpoint(
-      const string& process_name,
-      const string& path,
-      const string& interface)
-    : process_name_(process_name),
-      path_(path),
-      interface_(interface)
-  {
-  }
+ public:
+  endpoint(const string& process_name, const string& path,
+           const string& interface)
+      : process_name_(process_name), path_(path), interface_(interface) {}
 
-  const string& get_path() const
-  {
-    return path_;
-  }
+  const string& get_path() const { return path_; }
 
-  const string& get_interface() const
-  {
-    return interface_;
-  }
+  const string& get_interface() const { return interface_; }
 
-  const string& get_process_name() const
-  {
-    return process_name_;
-  }
-
+  const string& get_process_name() const { return process_name_; }
 };
 
-} // namespace dbus
+}  // namespace dbus
 
-#endif // DBUS_ENDPOINT_HPP
+#endif  // DBUS_ENDPOINT_HPP

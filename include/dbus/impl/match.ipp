@@ -7,10 +7,7 @@
 #define DBUS_MATCH_IPP
 
 namespace dbus {
-
-void connection_service::new_match(implementation_type& impl,
-    match& m)
-{
+void connection_service::new_match(implementation_type& impl, match& m) {
   error e;
   dbus_bus_add_match(impl, m.get_expression().c_str(), e);
   e.throw_if_set();
@@ -18,14 +15,12 @@ void connection_service::new_match(implementation_type& impl,
   // org.freedesktop.DBus and call AddMatch
 }
 
-void connection_service::delete_match(implementation_type& impl,
-    match& m)
-{
+void connection_service::delete_match(implementation_type& impl, match& m) {
   error e;
   dbus_bus_remove_match(impl, m.get_expression().c_str(), e);
   e.throw_if_set();
 }
 
-} // namespace dbus
+}  // namespace dbus
 
-#endif // DBUS_MATCH_IPP
+#endif  // DBUS_MATCH_IPP

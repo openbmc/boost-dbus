@@ -14,81 +14,51 @@
 
 namespace dbus {
 
-class error
-  : public boost::system::error_category
-{
+class error : public boost::system::error_category {
   DBusError error_;
 
-public:
-  error()
-  {
-    dbus_error_init(&error_);
-  }
+ public:
+  error() { dbus_error_init(&error_); }
 
-  error(DBusError *src)
-  {
+  error(DBusError *src) {
     dbus_error_init(&error_);
     dbus_move_error(src, &error_);
   }
 
-  error(dbus::message& m)
-  {
+  error(dbus::message &m) {
     dbus_error_init(&error_);
     dbus_set_error_from_message(&error_, m);
   }
 
-  ~error()
-  {
-    dbus_error_free(&error_);
-  }
+  ~error() { dbus_error_free(&error_); }
 
-  const char *name() const BOOST_SYSTEM_NOEXCEPT
-  {
-    return error_.name;
-  }
+  const char *name() const BOOST_SYSTEM_NOEXCEPT { return error_.name; }
 
-  string message(int value) const
-  {
-    return error_.message;
-  }
+  string message(int value) const { return error_.message; }
 
-  bool is_set() const
-  {
-    return dbus_error_is_set(&error_);
-  }
+  bool is_set() const { return dbus_error_is_set(&error_); }
 
-  operator const DBusError *() const
-  {
-    return &error_;
-  }
+  operator const DBusError *() const { return &error_; }
 
-  operator DBusError *()
-  {
-    return &error_;
-  }
+  operator DBusError *() { return &error_; }
 
   boost::system::error_code error_code() const;
   boost::system::system_error system_error() const;
   void throw_if_set() const;
 };
 
-boost::system::error_code error::error_code() const
-{
-  return boost::system::error_code(
-      is_set(),
-      *this);
+inline boost::system::error_code error::error_code() const {
+  return boost::system::error_code(is_set(), *this);
 }
 
-boost::system::system_error error::system_error() const
-{
+inline boost::system::system_error error::system_error() const {
   return boost::system::system_error(error_code());
 }
 
-void error::throw_if_set() const
-{
-  if(is_set()) throw system_error();
+inline void error::throw_if_set() const {
+  if (is_set()) throw system_error();
 }
 
-} // namespace dbus
+}  // namespace dbus
 
-#endif // DBUS_ERROR_HPP
+#endif  // DBUS_ERROR_HPP

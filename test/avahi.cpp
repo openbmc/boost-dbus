@@ -4,144 +4,90 @@
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <dbus/connection.hpp>
-#include <dbus/message.hpp>
 #include <dbus/endpoint.hpp>
 #include <dbus/filter.hpp>
 #include <dbus/match.hpp>
-#include <dbus/functional.hpp>
+#include <dbus/message.hpp>
+#include <functional>
 
-#include <gtest/gtest.h>
 #include <unistd.h>
-#include <utility/record_property.hpp>
+#include <gtest/gtest.h>
 
+TEST(AvahiTest, GetHostName) {
+  dbus::endpoint test_daemon("org.freedesktop.Avahi", "/",
+                             "org.freedesktop.Avahi.Server");
+  boost::asio::io_service io;
+  dbus::connection system_bus(io, dbus::bus::system);
 
-using namespace boost::asio;
-using namespace dbus;
-using boost::system::error_code;
+  dbus::message m = dbus::message::new_call(test_daemon, "GetHostName");
 
+  system_bus.async_send(
+      m, [&](const boost::system::error_code ec, dbus::message r) {
 
-class AvahiTest
-  : public testing::Test
-{
-protected:
-  static void SetUpTestCase()
-  {
-  }
-  static io_service io;
-  static string browser_path;
-  static endpoint avahi_daemon;
-};
-// It seems like these should be non-static,
-// but I get a mysterious SEGFAULT for io
-//   ¿related: http://stackoverflow.com/questions/18009156/boost-asio-segfault-no-idea-why
-io_service AvahiTest::io;
-string AvahiTest::browser_path;
-endpoint AvahiTest::avahi_daemon(
-  "org.freedesktop.Avahi",
-  "/",
-  "org.freedesktop.Avahi.Server");
+        std::string avahi_hostname;
+        std::string hostname;
 
-struct compare_hostnames
-{
-  io_service& io;
-  connection& system_bus;
+        // get hostname from a system call
+        char c[1024];
+        gethostname(c, 1024);
+        hostname = c;
 
-  void operator()(error_code ec, message r)
-  {
-    string avahi_hostname;
-    string unix_hostname;
+        r.unpack(avahi_hostname);
 
-    {
-      // get hostname from a system call
-      char c[1024];
-      gethostname(c, 1024);
-      unix_hostname = c;
-    }
+        // Get only the host name, not the fqdn
+        auto unix_hostname = hostname.substr(0, hostname.find("."));
+        EXPECT_EQ(unix_hostname, avahi_hostname);
 
-    r.unpack(avahi_hostname);
-
-    // this is only usually accurate
-    EXPECT_EQ(unix_hostname, avahi_hostname);
-
-    // eventually, connection should stop itself
+        io.stop();
+      });
+  boost::asio::deadline_timer t(io, boost::posix_time::seconds(10));
+  t.async_wait([&](const boost::system::error_code& /*e*/) {
     io.stop();
-  }
-};
-
-bool member_is_itemnew(message& m)
-{
-  return m.get_member() == "ItemNew";
-}
-
-struct handle_dispatch
-{
-  io_service& io;
-
-  void operator()(error_code ec, message s)
-  {
-    record_property("firstSignal") << s.get_member();
-    io.stop();
-  }
-};
-
-TEST_F(AvahiTest, GetHostName)
-{
-  connection system_bus(io, "unix:path=/var/run/dbus/system_bus_socket");
-
-  {
-  message m = message::new_call(
-    avahi_daemon,
-    "GetHostName");
-
-  system_bus.async_send(m,
-      (compare_hostnames){ io, system_bus });
-  }
-
+    FAIL() << "Callback was never called\n";
+  });
   io.run();
-/*
 }
 
+TEST(AvahiTest, ServiceBrowser) {
+  boost::asio::io_service io;
+  dbus::connection system_bus(io, dbus::bus::system);
 
-TEST_F(AvahiTest, ServiceBrowser)
-{
-  connection system_bus(io, bus::system);
-  */
-
-  {
+  dbus::endpoint test_daemon("org.freedesktop.Avahi", "/",
+                             "org.freedesktop.Avahi.Server");
   // create new service browser
-  message m = message::new_call(
-    avahi_daemon,
-    "ServiceBrowserNew");
+  dbus::message m1 = dbus::message::new_call(test_daemon, "ServiceBrowserNew");
+  m1.pack<int32_t>(-1)
+   .pack<int32_t>(-1)
+   .pack<std::string>("_http._tcp")
+   .pack<std::string>("local")
+   .pack<uint32_t>(0);
 
-  m.pack<int32>(-1)
-   .pack<int32>(-1)
-   .pack<string>("_http._tcp")
-   .pack<string>("local")
-   .pack<uint32>(0);
-
-  message r = system_bus.send(m);
-
+  dbus::message r = system_bus.send(m1);
+  std::string browser_path;
   r.unpack(browser_path);
-  }
-  record_property("browserPath") << browser_path;
-  // RegEx match browser_path
-  // catch a possible exception
-  /*
-}
+  testing::Test::RecordProperty("browserPath", browser_path);
 
+  dbus::match ma(system_bus, "type='signal',path='" + browser_path + "'");
+  dbus::filter f(system_bus, [](dbus::message& m) {
+    auto member = m.get_member();
+    return member == "NameAcquired";
+  });
 
+  std::function<void(boost::system::error_code, dbus::message)> event_handler =
+      [&](boost::system::error_code ec, dbus::message s) {
+        testing::Test::RecordProperty("firstSignal", s.get_member());
+        std::string a = s.get_member();
+        std::string dude;
+        s.unpack(dude);
+        f.async_dispatch(event_handler);
+        io.stop();
+      };
+  f.async_dispatch(event_handler);
 
-TEST_F(AvahiTest, BrowseForHttp)
-{
-  */
-  io.reset();
-  //connection system_bus1(io, bus::system);
-
-  match m(system_bus, "type='signal',path='" + browser_path + "'");
-  filter f(system_bus, member_is_itemnew);
-
-  f.async_dispatch(
-      (handle_dispatch){ io });
-
+  boost::asio::deadline_timer t(io, boost::posix_time::seconds(10));
+  t.async_wait([&](const boost::system::error_code& /*e*/) {
+    io.stop();
+    FAIL() << "Callback was never called\n";
+  });
   io.run();
 }

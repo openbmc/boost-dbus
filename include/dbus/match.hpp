@@ -9,8 +9,8 @@
 #include <string>
 #include <boost/asio.hpp>
 
-#include <dbus/error.hpp>
 #include <dbus/connection.hpp>
+#include <dbus/error.hpp>
 
 namespace dbus {
 
@@ -21,31 +21,26 @@ namespace dbus {
  * Each rule will be represented by an instance of match. To remove that rule,
  * dispose of the object.
  */
-//TODO use noncopyable
-class match
-{
+class match {
   connection& connection_;
   std::string expression_;
 
-public:
-  match(connection& c, 
-      BOOST_ASIO_MOVE_ARG(std::string) e)
-    : connection_(c),
-      expression_(BOOST_ASIO_MOVE_CAST(std::string)(e))
-  {
+ public:
+  match(connection& c, BOOST_ASIO_MOVE_ARG(std::string) e)
+      : connection_(c), expression_(BOOST_ASIO_MOVE_CAST(std::string)(e)) {
     connection_.new_match(*this);
   }
 
-  ~match()
-  {
-    connection_.delete_match(*this);
-  }
+  ~match() { connection_.delete_match(*this); }
 
   const std::string& get_expression() const { return expression_; }
+
+  match(match&&) = delete;
+  match& operator=(match&&) = delete;
 };
 
-} // namespace dbus
+}  // namespace dbus
 
 #include <dbus/impl/match.ipp>
 
-#endif // DBUS_MATCH_HPP
+#endif  // DBUS_MATCH_HPP

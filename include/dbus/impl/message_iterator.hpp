@@ -14,23 +14,23 @@ class message;
 
 namespace impl {
 
-class message_iterator
-{
+class message_iterator {
   DBusMessageIter DBusMessageIter_;
-public:
+
+ public:
   // writing
-  static void init_append(message& m, message_iterator& i);
+  static void init_append(message &m, message_iterator &i);
 
   void append_basic(int code, const void *value);
 
-  void open_container(int code, const char *signature, message_iterator&);
-  void close_container(message_iterator&);
-  void abandon_container(message_iterator&);
+  void open_container(int code, const char *signature, message_iterator &);
+  void close_container(message_iterator &);
+  void abandon_container(message_iterator &);
 
   void append_fixed_array(int code, const void *value, int n_elements);
 
   // reading
-  static bool init(message& m, message_iterator& i);
+  static bool init(message &m, message_iterator &i);
 
   bool next();
   bool has_next();
@@ -38,13 +38,13 @@ public:
 
   void get_basic(void *value);
 
-  void recurse(message_iterator&);
+  void recurse(message_iterator &);
 
   int get_element_type();
   void get_fixed_array(void *value, int *n_elements);
 };
 
-} // namespace impl
-} // namespace dbus
+}  // namespace impl
+}  // namespace dbus
 
-#endif // DBUS_IMPL_MESSAGE_ITERATOR_HPP
+#endif  // DBUS_IMPL_MESSAGE_ITERATOR_HPP
