@@ -11,6 +11,7 @@
 #include <dbus/endpoint.hpp>
 #include <dbus/impl/message_iterator.hpp>
 #include <iostream>
+#include <vector>
 #include <boost/intrusive_ptr.hpp>
 #include <boost/utility/enable_if.hpp>
 
@@ -111,6 +112,7 @@ class message {
   struct unpacker {
     impl::message_iterator iter_;
     unpacker(message& m) { impl::message_iterator::init(m, iter_); }
+
     template <typename Element>
     unpacker& unpack(Element& e) {
       return *this >> e;
@@ -173,6 +175,34 @@ inline message::unpacker& operator>>(message::unpacker& u, string& s) {
   u.iter_.get_basic(&c);
   s.assign(c);
   u.iter_.next();
+  return u;
+}
+
+template <typename Element>
+inline message::unpacker& operator>>(message::unpacker& u,
+                                     std::vector<Element>& s) {
+  static_assert(std::is_same<Element, std::string>::value, "only std::vector<std::string> is implemented for now");
+  impl::message_iterator sub;
+  u.iter_.recurse(sub);
+
+  const char* c;
+  while (sub.has_next()) {
+    sub.get_basic(&c);
+    s.emplace_back(c);
+    sub.next();
+  }
+
+  // TODO(ed)
+  // Make this generic for all types.  The below code is close, but there's
+  // template issues and things I don't understand;
+  /*
+  auto e = message::unpacker(sub);
+  while (sub.has_next()) {
+    s.emplace_back();
+    Element& element = s.back();
+    e.unpack(element);
+  }
+*/
   return u;
 }
 

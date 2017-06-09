@@ -15,12 +15,12 @@ cmake_minimum_required(VERSION 2.8)
 ###############
 # C++ options
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")#-std=c++0x")
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/test)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/test)
 
 ###############
 # import Boost
-find_package(Boost 1.54 COMPONENTS system chrono REQUIRED)
+find_package(Boost REQUIRED)
 include_directories(${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
 
@@ -44,7 +44,7 @@ enable_testing()
 add_executable(dbustests "test/avahi.cpp" "test/message.cpp")
 target_link_libraries(dbustests ${Boost_LIBRARIES})
 target_link_libraries(dbustests ${DBus_LIBRARIES})
-target_link_libraries(dbustests ${GTEST_BOTH_LIBRARIES})
+target_link_libraries(dbustests ${GTEST_BOTH_LIBRARIES} gmock)
 target_link_libraries(dbustests -pthread)
 add_test(dbustests dbustests "--gtest_output=xml:${test_name}.xml")
 
