@@ -22,17 +22,14 @@ struct async_send_op {
   boost::asio::io_service& io_;
   message message_;
   MessageHandler handler_;
-  async_send_op(boost::asio::io_service& io,
-                BOOST_ASIO_MOVE_ARG(MessageHandler) handler);
+  async_send_op(boost::asio::io_service& io,BOOST_ASIO_MOVE_ARG(MessageHandler) handler);
   static void callback(DBusPendingCall* p, void* userdata);  // for C API
   void operator()(impl::connection& c, message& m);  // initiate operation
   void operator()();  // bound completion handler form
 };
 
 template <typename MessageHandler>
-async_send_op<MessageHandler>::async_send_op(boost::asio::io_service& io,
-                                             BOOST_ASIO_MOVE_ARG(MessageHandler)
-                                                 handler)
+async_send_op<MessageHandler>::async_send_op(boost::asio::io_service& io,BOOST_ASIO_MOVE_ARG(MessageHandler)handler)
     : io_(io), handler_(BOOST_ASIO_MOVE_CAST(MessageHandler)(handler)) {}
 
 template <typename MessageHandler>

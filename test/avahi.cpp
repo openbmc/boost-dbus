@@ -123,68 +123,82 @@ TEST(BOOST_DBUS, ListServices) {
   io.run();
 }
 
-TEST(BOOST_DBUS, ListObjects) {
+void query_interfaces(dbus::connection& system_bus, std::string& service_name,
+                      std::string& object_name) {
+  dbus::endpoint service_daemon(service_name, object_name,
+                                "org.freedestop.DBus.Introspectable");
+  dbus::message m = dbus::message::new_call(service_daemon, "Introspect");
+  try {
+    auto r = system_bus.send(m);
+    std::vector<std::string> names;
+    // Todo(ed) figure out why we're occassionally getting access
+    // denied errors
+    // EXPECT_EQ(ec, boost::system::errc::success);
+
+    std::string xml;
+    r.unpack(xml);
+    // TODO(ed) names needs lock for multithreaded access
+    dbus::read_dbus_xml_names(xml, names);
+    // loop over the newly added items
+    for (auto name : names) {
+      std::cout << name << "\n";
+      auto new_service_string = object_name + "/" + name;
+      query_interfaces(system_bus, service_name, new_service_string);
+    }
+  } catch (boost::system::error_code e) {
+    std::cout << e;
+  }
+}
+
+TEST(BOOST_DBUS, ObjectManager) {
   boost::asio::io_service io;
   dbus::connection system_bus(io, dbus::bus::system);
 
-  dbus::endpoint test_daemon("org.freedesktop.DBus", "/",
-                             "org.freedesktop.DBus");
-
-  // create new service browser
-  dbus::message m = dbus::message::new_call(test_daemon, "ListNames");
-  system_bus.async_send(m, [&](const boost::system::error_code ec,
-                               dbus::message r) {
-    static std::vector<std::string> services;
-    r.unpack(services);
-    // todo(ed) find out why this needs to be atomic
-    static std::atomic<int> dbus_count(0);
-    std::cout << dbus_count << " Callers\n";
-    auto names = std::make_shared<std::vector<std::string>>();
-    for (auto& service : services) {
-      dbus::endpoint service_daemon(service, "/",
-                                    "org.freedesktop.DBus.Introspectable");
-      dbus::message m = dbus::message::new_call(service_daemon, "Introspect");
-      dbus_count++;
-      std::cout << dbus_count << " Callers\n";
-
-      system_bus.async_send(m, [&io, &service, names](
-                                   const boost::system::error_code ec,
-                                   dbus::message r) {
-        dbus_count--;
-        std::cout << service << "\n";
-        // Todo(ed) figure out why we're occassionally getting access denied
-        // errors
-        // EXPECT_EQ(ec, boost::system::errc::success);
-        if (ec) {
-          std::cout << "Error:" << ec << " reading service " << service << "\n";
-        } else {
-          std::string xml;
-          r.unpack(xml);
-          size_t old_size = names->size();
-          // TODO(ed) names needs lock for multithreaded access
-          dbus::read_dbus_xml_names(xml, *names);
-          // loop over the newly added items
-          for (size_t name_index = old_size; name_index < names->size();
-               name_index++) {
-            // auto& name = names[name_index];
-          }
-        }
-        // if we're the last one, print the list and cancel the io_service
-        if (dbus_count == 0) {
-          for (auto& name : *names) {
-            std::cout << name << "\n";
-          }
-          io.stop();
-        }
-      });
-
-      std::function<void(const boost::system::error_code ec, dbus::message r)>
-          event_handler =
-              [&](const boost::system::error_code ec, dbus::message r) {};
-      system_bus.async_send(m, event_handler);
-    }
-
+  dbus::match ma(system_bus,
+                 "type='signal',path_namespace='/xyz/openbmc_project/sensors'");
+  dbus::filter f(system_bus, [](dbus::message& m) {
+    auto member = m.get_member();
+    return member == "PropertiesChanged";
   });
+
+  std::function<void(boost::system::error_code, dbus::message)> event_handler =
+      [&](boost::system::error_code ec, dbus::message s) {
+        std::string object_name;
+        std::vector<std::pair<std::string, dbus::dbus_variant>> values;
+        s.unpack(object_name).unpack(values);
+
+        EXPECT_EQ(object_name, "xyz.openbmc_project.Sensor.Value");
+        
+        //EXPECT_EQ(values.size(), 1);
+        auto expected = std::pair<std::string, dbus::dbus_variant>("Value", 42);
+        //EXPECT_EQ(values[0], expected);
+        //s.unpack(values);
+
+        //f.async_dispatch(event_handler);
+        io.stop();
+      };
+  f.async_dispatch(event_handler);
+
+  dbus::endpoint test_endpoint(
+      "org.freedesktop.Avahi",
+      "/xyz/openbmc_project/sensors/temperature/LR_Brd_Temp",
+      "org.freedesktop.DBus.Properties");
+
+  auto signal_name = std::string("PropertiesChanged");
+  auto m = dbus::message::new_signal(test_endpoint, signal_name);
+
+  m.pack("xyz.openbmc_project.Sensor.Value");
+
+  std::vector<std::pair<std::string, dbus::dbus_variant>> map2;
+  
+  map2.emplace_back("Value", 42);
+ 
+  m.pack(map2);
+
+  auto removed = std::vector<uint32_t>();
+  m.pack(removed);
+  system_bus.async_send(m,
+                        [&](boost::system::error_code ec, dbus::message s) {});
 
   io.run();
 }
