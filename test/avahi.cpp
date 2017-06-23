@@ -261,3 +261,62 @@ TEST(BOOST_DBUS, MultipleSensorChanged) {
                         [&](boost::system::error_code ec, dbus::message s) {});
   io.run();
 }
+
+TEST(BOOST_DBUS, MethodCall) {
+  boost::asio::io_service io;
+  boost::asio::deadline_timer t(io, boost::posix_time::seconds(30));
+  t.async_wait([&](const boost::system::error_code& /*e*/) {
+    io.stop();
+    FAIL() << "Callback was never called\n";
+  });
+  std::string requested_name = "xyz.openbmc_project.fwupdate1.server";
+  dbus::connection system_bus(io, dbus::bus::system);
+  system_bus.request_name(requested_name);
+
+  /* not sure we even need to add a match for method calls,
+   * but this is how you might do it .... */
+  dbus::match ma(system_bus,
+                 "type='method_call',path_namespace='/xyz/openbmc_project/fwupdate1'");
+
+  dbus::filter f(system_bus, [](dbus::message& m) {
+    // std::cerr << "filter called: " << m << std::endl;
+    return (m.get_member() == "Get" &&
+            m.get_interface() == "org.freedesktop.DBus.Properties" &&
+            m.get_signature() == "ss");
+  });
+
+  std::function<void(boost::system::error_code, dbus::message)> method_handler =
+      [&](boost::system::error_code ec, dbus::message s) {
+        std::string intf_name, prop_name;
+        s.unpack(intf_name).unpack(prop_name);
+
+        EXPECT_EQ(intf_name, "xyz.openbmc_project.fwupdate1");
+        EXPECT_EQ(prop_name, "State");
+
+        // send a reply so dbus doesn't get angry?
+        auto r = system_bus.reply(s);
+        r.pack("IDLE");
+        system_bus.async_send(r,
+                [&](boost::system::error_code ec, dbus::message s) {} );
+        io.stop();
+      };
+  f.async_dispatch(method_handler);
+
+  dbus::endpoint test_endpoint(
+      requested_name,
+      "/xyz/openbmc_project/fwupdate1",
+      "org.freedesktop.DBus.Properties");
+
+  auto method_name = std::string("Get");
+  auto m = dbus::message::new_call(test_endpoint, method_name);
+
+  m.pack("xyz.openbmc_project.fwupdate1");
+  m.pack("State");
+
+  system_bus.async_send(m,
+                        [&](boost::system::error_code ec, dbus::message s) {
+                        std::cerr <<"received s: " << s << std::endl;
+                        });
+
+  io.run();
+}
