@@ -274,15 +274,72 @@ inline message::unpacker& operator>>(message::unpacker& u, dbus_variant& v) {
   message::unpacker sub;
   u.iter_.recurse(sub.iter_);
 
-  auto x = sub.iter_.get_arg_type();
-  //sub.iter_.get_basic(&c);
+  auto arg_type = sub.iter_.get_arg_type();
+  // sub.iter_.get_basic(&c);
+  // Todo(ed) find a better way to do this lookup table
+  switch (arg_type) {
+    case element<std::string>::code: {
+      std::string s;
+      sub >> s;
+      v = s;
+    } break;
+    case element<bool>::code: {
+      bool b;
+      sub >> b;
+      v = b;
+    } break;
+    case element<byte>::code: {
+      byte b;
+      sub >> b;
+      v = b;
+    } break;
+    case element<int16>::code: {
+      int16 b;
+      sub >> b;
+      v = b;
+    } break;
+    case element<uint16>::code: {
+      uint16 b;
+      sub >> b;
+      v = b;
+    } break;
+    case element<int32>::code: {
+      int32 b;
+      sub >> b;
+      v = b;
+    } break;
+    case element<uint32>::code: {
+      uint32 b;
+      sub >> b;
+      v = b;
+    } break;
+    case element<int64>::code: {
+      int64 b;
+      sub >> b;
+      v = b;
+    } break;
+    case element<uint64>::code: {
+      uint64 b;
+      sub >> b;
+      v = b;
+    } break;
+    case element<double>::code: {
+      double b;
+      sub >> b;
+      v = b;
+    } break;
 
+    default:
+      // TODO(ed) throw exception
+      break;
+  }
   u.iter_.next();
   return u;
 }
 
 template <typename Key, typename Value>
-inline message::unpacker& operator>>(message::unpacker& u, std::pair<Key, Value>& v) {
+inline message::unpacker& operator>>(message::unpacker& u,
+                                     std::pair<Key, Value>& v) {
   message::unpacker sub;
   u.iter_.recurse(sub.iter_);
   sub >> v.first;
@@ -296,16 +353,13 @@ template <typename Element>
 inline message::unpacker& operator>>(message::unpacker& u,
                                      std::vector<Element>& s) {
   message::unpacker sub;
-  auto x = u.iter_.get_arg_type();
-  if (x == 115){
-    
-  }
-  u.iter_.recurse(sub.iter_);
 
-  Element c;
-  while (sub.iter_.has_next()) {
+  u.iter_.recurse(sub.iter_);
+  auto arg_type = sub.iter_.get_arg_type();
+  while (arg_type != DBUS_TYPE_INVALID) {
     s.emplace_back();
     sub >> s.back();
+    arg_type = sub.iter_.get_arg_type();
   }
   u.iter_.next();
   return u;

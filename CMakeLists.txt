@@ -20,7 +20,11 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/test)
 
 ###############
 # import Boost
+add_definitions(-DBOOST_ERROR_CODE_HEADER_ONLY)
+add_definitions(-DBOOST_SYSTEM_NO_DEPRECATED)
+add_definitions(-DBOOST_ALL_NO_LIB)
 find_package(Boost REQUIRED)
+
 include_directories(${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
 
@@ -45,6 +49,6 @@ add_executable(dbustests "test/avahi.cpp" "test/message.cpp")
 target_link_libraries(dbustests ${Boost_LIBRARIES})
 target_link_libraries(dbustests ${DBus_LIBRARIES})
 target_link_libraries(dbustests ${GTEST_BOTH_LIBRARIES} gmock)
-target_link_libraries(dbustests -pthread)
+target_link_libraries(dbustests pthread)
 add_test(dbustests dbustests "--gtest_output=xml:${test_name}.xml")
 
