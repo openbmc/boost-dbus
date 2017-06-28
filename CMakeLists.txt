@@ -52,3 +52,8 @@ target_link_libraries(dbustests ${GTEST_BOTH_LIBRARIES} gmock)
 target_link_libraries(dbustests pthread)
 add_test(dbustests dbustests "--gtest_output=xml:${test_name}.xml")
 
+##############
+# Install
+Add_library(boost-dbus INTERFACE)
+target_include_directories(boost-dbus INTERFACE include/)
+install(DIRECTORY include/ DESTINATION include)
