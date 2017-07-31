@@ -114,6 +114,17 @@ class message {
       return *this << e;
     }
   };
+
+  template <typename Element>
+  packer pack(const Element& e) {
+    return packer(*this).pack(e);
+  }
+
+  template <typename Element, typename... Args>
+  packer pack(const Element& e, Args&... args) {
+    return packer(*this).pack(e).pack(args...);
+  }
+
   struct unpacker {
     impl::message_iterator iter_;
     unpacker(message& m) { impl::message_iterator::init(m, iter_); }
@@ -126,13 +137,13 @@ class message {
   };
 
   template <typename Element>
-  packer pack(const Element& e) {
-    return packer(*this).pack(e);
-  }
-
-  template <typename Element>
   unpacker unpack(Element& e) {
     return unpacker(*this).unpack(e);
+  }
+
+  template <typename Element, typename... Args>
+  unpacker& unpack(Element& e, Args&... args) {
+    return unpack(e).unpack(args...);
   }
 
  private:

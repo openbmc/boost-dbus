@@ -45,7 +45,7 @@ include_directories(${GTEST_INCLUDE_DIRS})
 enable_testing()
 
 
-add_executable(dbustests "test/avahi.cpp" "test/message.cpp")
+add_executable(dbustests "test/avahi.cpp" "test/message.cpp" "test/error.cpp")
 target_link_libraries(dbustests ${Boost_LIBRARIES})
 target_link_libraries(dbustests ${DBus_LIBRARIES})
 target_link_libraries(dbustests ${GTEST_BOTH_LIBRARIES} gmock)
@@ -57,3 +57,4 @@ add_test(dbustests dbustests "--gtest_output=xml:${test_name}.xml")
 Add_library(boost-dbus INTERFACE)
 target_include_directories(boost-dbus INTERFACE include/)
 install(DIRECTORY include/ DESTINATION include)
+

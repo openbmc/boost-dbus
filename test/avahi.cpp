@@ -8,7 +8,6 @@
 #include <dbus/filter.hpp>
 #include <dbus/match.hpp>
 #include <dbus/message.hpp>
-#include <dbus/utility.hpp>
 #include <functional>
 
 #include <unistd.h>
@@ -123,33 +122,6 @@ TEST(BOOST_DBUS, ListServices) {
   io.run();
 }
 
-void query_interfaces(dbus::connection_ptr system_bus,
-                      std::string& service_name, std::string& object_name) {
-  dbus::endpoint service_daemon(service_name, object_name,
-                                "org.freedestop.DBus.Introspectable");
-  dbus::message m = dbus::message::new_call(service_daemon, "Introspect");
-  try {
-    auto r = system_bus->send(m);
-    std::vector<std::string> names;
-    // Todo(ed) figure out why we're occassionally getting access
-    // denied errors
-    // EXPECT_EQ(ec, boost::system::errc::success);
-
-    std::string xml;
-    r.unpack(xml);
-    // TODO(ed) names needs lock for multithreaded access
-    dbus::read_dbus_xml_names(xml, names);
-    // loop over the newly added items
-    for (auto name : names) {
-      std::cout << name << "\n";
-      auto new_service_string = object_name + "/" + name;
-      query_interfaces(system_bus, service_name, new_service_string);
-    }
-  } catch (boost::system::error_code e) {
-    std::cout << e;
-  }
-}
-
 TEST(BOOST_DBUS, SingleSensorChanged) {
   boost::asio::io_service io;
 
@@ -171,8 +143,7 @@ TEST(BOOST_DBUS, SingleSensorChanged) {
               "/xyz/openbmc_project/sensors/temperature/LR_Brd_Temp");
 
     std::vector<std::pair<std::string, dbus::dbus_variant>> values;
-    s.unpack(object_name).unpack(values);
-
+    s.unpack(object_name, values);
     EXPECT_EQ(object_name, "xyz.openbmc_project.Sensor.Value");
 
     EXPECT_EQ(values.size(), 1);
@@ -225,8 +196,7 @@ TEST(BOOST_DBUS, MultipleSensorChanged) {
               "/xyz/openbmc_project/sensors/temperature/LR_Brd_Temp");
 
     std::vector<std::pair<std::string, dbus::dbus_variant>> values;
-    s.unpack(object_name).unpack(values);
-
+    s.unpack(object_name, values);
     EXPECT_EQ(object_name, "xyz.openbmc_project.Sensor.Value");
 
     EXPECT_EQ(values.size(), 1);
@@ -238,6 +208,7 @@ TEST(BOOST_DBUS, MultipleSensorChanged) {
     } else {
       f.async_dispatch(callback);
     }
+    s.unpack(object_name, values);
 
   };
   f.async_dispatch(callback);
@@ -274,17 +245,11 @@ TEST(BOOST_DBUS, MethodCall) {
     io.stop();
     FAIL() << "Callback was never called\n";
   });
-  auto system_bus = std::make_shared<dbus::connection>(io, dbus::bus::system);
-  std::string requested_name = "xyz.openbmc_project.fwupdate1.server";
-  system_bus->request_name(requested_name);
 
-  /* not sure we even need to add a match for method calls,
-   * but this is how you might do it .... */
-  dbus::match ma(system_bus,
-                 "type='method_call',path_namespace='/xyz/openbmc_project/fwupdate1'");
+  auto system_bus = std::make_shared<dbus::connection>(io, dbus::bus::system);
+  std::string requested_name = system_bus->get_unique_name();
 
   dbus::filter f(system_bus, [](dbus::message& m) {
-    // std::cerr << "filter called: " << m << std::endl;
     return (m.get_member() == "Get" &&
             m.get_interface() == "org.freedesktop.DBus.Properties" &&
             m.get_signature() == "ss");
@@ -292,19 +257,23 @@ TEST(BOOST_DBUS, MethodCall) {
 
   std::function<void(boost::system::error_code, dbus::message)> method_handler =
       [&](boost::system::error_code ec, dbus::message s) {
-        std::string intf_name, prop_name;
-        s.unpack(intf_name).unpack(prop_name);
+        if (ec) {
+          FAIL() << ec;
+        } else {
+          std::string intf_name, prop_name;
+          s.unpack(intf_name, prop_name);
 
-        EXPECT_EQ(intf_name, "xyz.openbmc_project.fwupdate1");
-        EXPECT_EQ(prop_name, "State");
+          EXPECT_EQ(intf_name, "xyz.openbmc_project.fwupdate1");
+          EXPECT_EQ(prop_name, "State");
 
-        // send a reply so dbus doesn't get angry?
-        auto r = system_bus->reply(s);
-        r.pack("IDLE");
-        system_bus->async_send(r,
-                [&](boost::system::error_code ec, dbus::message s) {} );
-        io.stop();
-      };
+          // send a reply so dbus doesn't get angry?
+          auto r = system_bus->reply(s);
+          r.pack("IDLE");
+          system_bus->async_send(r, [&](boost::system::error_code ec,
+                                        dbus::message s) { });
+           io.stop();
+        }
+     };
   f.async_dispatch(method_handler);
 
   dbus::endpoint test_endpoint(
@@ -315,9 +284,7 @@ TEST(BOOST_DBUS, MethodCall) {
   auto method_name = std::string("Get");
   auto m = dbus::message::new_call(test_endpoint, method_name);
 
-  m.pack("xyz.openbmc_project.fwupdate1");
-  m.pack("State");
-
+  m.pack("xyz.openbmc_project.fwupdate1", "State");
   system_bus->async_send(m,
                         [&](boost::system::error_code ec, dbus::message s) {
                         std::cerr <<"received s: " << s << std::endl;

@@ -67,6 +67,11 @@ class connection : public boost::asio::basic_io_object<connection_service> {
       this->get_implementation().request_name(name);
   }
 
+
+  std::string get_unique_name(){
+      return this->get_implementation().get_unique_name();
+  }
+
   /// Reply to a message.
   /**
  * @param m The message from which to create the reply
