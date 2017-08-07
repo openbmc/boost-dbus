@@ -134,9 +134,6 @@ TEST(BOOST_DBUS, SingleSensorChanged) {
     return member == "PropertiesChanged";
   });
 
-  // std::function<void(boost::system::error_code, dbus::message)> event_handler
-  // =
-
   f.async_dispatch([&](boost::system::error_code ec, dbus::message s) {
     std::string object_name;
     EXPECT_EQ(s.get_path(),

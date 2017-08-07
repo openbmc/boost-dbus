@@ -38,7 +38,7 @@ class queue {
 
    public:
     void operator()() { handler_(error_, message_); }
-    closure(BOOST_ASIO_MOVE_ARG(handler_type) h, Message m,
+    closure(handler_type h, Message m,
             boost::system::error_code e = boost::system::error_code())
         : handler_(h), message_(m), error_(e) {}
   };
@@ -54,7 +54,7 @@ class queue {
 
       lock.unlock();
 
-      io.post(closure(BOOST_ASIO_MOVE_CAST(handler_type)(h), m));
+      io.post(closure(h, m));
     }
   }
 
@@ -85,7 +85,7 @@ class queue {
 
       init_type init(BOOST_ASIO_MOVE_CAST(MessageHandler)(h));
 
-      io.post(closure(BOOST_ASIO_MOVE_CAST(handler_type)(init.handler), m));
+      io.post(closure(init.handler, m));
 
       return init.result.get();
     }

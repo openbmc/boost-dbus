@@ -111,7 +111,7 @@ class connection : public boost::asio::basic_io_object<connection_service> {
  * timeout was not 0), or there was some other error.
  */
   template <typename Duration>
-  message send(message& m, const Duration& t) {
+  message send(message& m, const Duration& t = std::chrono::seconds(0)) {
     return this->get_service().send(this->get_implementation(), m, t);
   }
 
