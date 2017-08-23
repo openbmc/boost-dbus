@@ -114,16 +114,16 @@ class message {
     packer& pack(const Element& e) {
       return *this << e;
     }
+
+    template <typename Element, typename... Args>
+    packer pack(const Element& e, const Args&... args) {
+      return this->pack(e).pack(args...);
+    }
   };
 
-  template <typename Element>
-  packer pack(const Element& e) {
-    return packer(*this).pack(e);
-  }
-
-  template <typename Element, typename... Args>
-  packer pack(const Element& e, Args&... args) {
-    return packer(*this).pack(e).pack(args...);
+  template <typename... Args>
+  packer pack(const Args&... args) {
+    return packer(*this).pack(args...);
   }
 
   struct unpacker {
@@ -135,16 +135,16 @@ class message {
     unpacker& unpack(Element& e) {
       return *this >> e;
     }
+
+    template <typename Element, typename... Args>
+    unpacker& unpack(Element& e, Args&... args) {
+      return unpack(e).unpack(args...);
+    }
   };
 
-  template <typename Element>
-  unpacker unpack(Element& e) {
-    return unpacker(*this).unpack(e);
-  }
-
-  template <typename Element, typename... Args>
-  unpacker& unpack(Element& e, Args&... args) {
-    return unpack(e).unpack(args...);
+  template <typename... Args>
+  unpacker& unpack(Args&... args) {
+    return unpacker(*this).unpack(args...);
   }
 
  private:
