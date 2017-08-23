@@ -30,6 +30,11 @@ class queue {
  public:
   queue(boost::asio::io_service& io_service) : io(io_service) {}
 
+  queue(const queue<Message>& m)
+      : io(m.io), messages(m.messages), handlers(m.handlers) {
+        //TODO(ed) acquire the lock before copying messages and handlers
+      }
+
  private:
   class closure {
     handler_type handler_;
