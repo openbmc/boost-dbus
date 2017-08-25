@@ -38,7 +38,9 @@ class error {
   DBusError error_;
 
  public:
-  error() { dbus_error_init(&error_); }
+  error() {
+    dbus_error_init(&error_);
+  }
 
   error(DBusError *src) {
     dbus_error_init(&error_);
@@ -50,7 +52,11 @@ class error {
     dbus_set_error_from_message(&error_, m);
   }
 
-  ~error() { dbus_error_free(&error_); }
+  ~error() {
+    if (is_set()) {
+      dbus_error_free(&error_);
+    }
+  }
 
   bool is_set() const { return dbus_error_is_set(&error_); }
 

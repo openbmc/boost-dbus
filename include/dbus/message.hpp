@@ -13,8 +13,8 @@
 #include <iostream>
 #include <vector>
 #include <boost/intrusive_ptr.hpp>
-#include <boost/utility/enable_if.hpp>
 #include <boost/mpl/for_each.hpp>
+#include <boost/utility/enable_if.hpp>
 
 inline void intrusive_ptr_add_ref(DBusMessage* m) { dbus_message_ref(m); }
 
@@ -23,39 +23,48 @@ inline void intrusive_ptr_release(DBusMessage* m) { dbus_message_unref(m); }
 namespace dbus {
 
 class message {
+ private:
   boost::intrusive_ptr<DBusMessage> message_;
 
  public:
   /// Create a method call message
   static message new_call(const endpoint& destination,
                           const string& method_name) {
-    return dbus_message_new_method_call(
+    auto x = message(dbus_message_new_method_call(
         destination.get_process_name().c_str(), destination.get_path().c_str(),
-        destination.get_interface().c_str(), method_name.c_str());
+        destination.get_interface().c_str(), method_name.c_str()));
+    dbus_message_unref(x.message_.get());
+    return x;
   }
 
   /// Create a method return message
   static message new_return(message& call) {
-    return dbus_message_new_method_return(call);
+    auto x = message(dbus_message_new_method_return(call));
+    dbus_message_unref(x.message_.get());
+    return x;
   }
 
   /// Create an error message
   static message new_error(message& call, const string& error_name,
                            const string& error_message) {
-    return dbus_message_new_error(call, error_name.c_str(),
-                                  error_message.c_str());
+    auto x = message(dbus_message_new_error(call, error_name.c_str(),
+                                            error_message.c_str()));
+    dbus_message_unref(x.message_.get());
+    return x;
   }
 
   /// Create a signal message
   static message new_signal(const endpoint& origin, const string& signal_name) {
-    return dbus_message_new_signal(origin.get_path().c_str(),
-                                   origin.get_interface().c_str(),
-                                   signal_name.c_str());
+    auto x = message(dbus_message_new_signal(origin.get_path().c_str(),
+                                             origin.get_interface().c_str(),
+                                             signal_name.c_str()));
+    dbus_message_unref(x.message_.get());
+    return x;
   }
 
-  message() {}
+  message() = delete;
 
-  message(DBusMessage* m) : message_(dbus_message_ref(m)) {}
+  message(DBusMessage* m) : message_(m) {}
 
   operator DBusMessage*() { return message_.get(); }
 
@@ -217,9 +226,8 @@ inline message::packer& operator<<(message::packer& p, const string& e) {
 
 inline message::packer& operator<<(message::packer& p, const dbus_variant& v) {
   // Get the dbus typecode  of the variant being packed
-  char type = boost::apply_visitor([&](auto val) { 
-    return element<decltype(val)>::code;
-  }, v);
+  char type = boost::apply_visitor(
+      [&](auto val) { return element<decltype(val)>::code; }, v);
   char signature[] = {type, 0};
 
   message::packer sub;
@@ -257,8 +265,8 @@ inline message::unpacker& operator>>(message::unpacker& u, dbus_variant& v) {
 
   char arg_type = sub.iter_.get_arg_type();
 
-  boost::mpl::for_each<dbus_variant::types>([&](auto t) { 
-    if (arg_type == element<decltype(t)>::code){
+  boost::mpl::for_each<dbus_variant::types>([&](auto t) {
+    if (arg_type == element<decltype(t)>::code) {
       decltype(t) val_to_fill;
       sub >> val_to_fill;
       v = val_to_fill;

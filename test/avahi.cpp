@@ -127,7 +127,8 @@ TEST(BOOST_DBUS, SingleSensorChanged) {
 
   auto system_bus = std::make_shared<dbus::connection>(io, dbus::bus::system);
 
-  dbus::match ma(system_bus, "type='signal',path_namespace='/xyz/openbmc_project/sensors'");
+  dbus::match ma(system_bus,
+                 "type='signal',path_namespace='/xyz/openbmc_project/sensors'");
 
   dbus::filter f(system_bus, [](dbus::message& m) {
     auto member = m.get_member();
@@ -216,29 +217,27 @@ TEST(BOOST_DBUS, MultipleSensorChanged) {
       "org.freedesktop.DBus.Properties");
 
   auto signal_name = std::string("PropertiesChanged");
-  auto m = dbus::message::new_signal(test_endpoint, signal_name);
-
-  m.pack("xyz.openbmc_project.Sensor.Value");
 
   std::vector<std::pair<std::string, dbus::dbus_variant>> map2;
 
   map2.emplace_back("Value", 42);
 
-  m.pack(map2);
+  static auto removed = std::vector<uint32_t>();
 
-  auto removed = std::vector<uint32_t>();
-  m.pack(removed);
-  system_bus->async_send(m,
-                         [&](boost::system::error_code ec, dbus::message s) {});
-  system_bus->async_send(m,
-                         [&](boost::system::error_code ec, dbus::message s) {});
+  auto m = dbus::message::new_signal(test_endpoint, signal_name);
+  m.pack("xyz.openbmc_project.Sensor.Value", map2, removed);
+
+  system_bus->send(m, std::chrono::seconds(0));
+  system_bus->send(m, std::chrono::seconds(0));
+
   io.run();
 }
 
 TEST(BOOST_DBUS, MethodCall) {
   boost::asio::io_service io;
-  boost::asio::deadline_timer t(io, boost::posix_time::seconds(30));
-  t.async_wait([&](const boost::system::error_code& /*e*/) {
+
+  boost::asio::deadline_timer t(io, boost::posix_time::seconds(2));
+  t.async_wait([&](const boost::system::error_code&) {
     io.stop();
     FAIL() << "Callback was never called\n";
   });
@@ -266,26 +265,25 @@ TEST(BOOST_DBUS, MethodCall) {
           // send a reply so dbus doesn't get angry?
           auto r = system_bus->reply(s);
           r.pack("IDLE");
-          system_bus->async_send(r, [&](boost::system::error_code ec,
-                                        dbus::message s) { });
-           io.stop();
+          system_bus->async_send(
+              r, [&](boost::system::error_code ec, dbus::message s) {});
+          io.stop();
         }
-     };
+      };
   f.async_dispatch(method_handler);
 
-  dbus::endpoint test_endpoint(
-      requested_name,
-      "/xyz/openbmc_project/fwupdate1",
-      "org.freedesktop.DBus.Properties");
+  dbus::endpoint test_endpoint(requested_name, "/xyz/openbmc_project/fwupdate1",
+                               "org.freedesktop.DBus.Properties");
 
   auto method_name = std::string("Get");
   auto m = dbus::message::new_call(test_endpoint, method_name);
 
   m.pack("xyz.openbmc_project.fwupdate1", "State");
-  system_bus->async_send(m,
-                        [&](boost::system::error_code ec, dbus::message s) {
-                        std::cerr <<"received s: " << s << std::endl;
-                        });
+  system_bus->async_send(m, [&](boost::system::error_code ec, dbus::message s) {
+    std::cerr << "received s: " << s << std::endl;
+  });
+
+  // system_bus->send(m, std::chrono::seconds(0));
 
   io.run();
 }

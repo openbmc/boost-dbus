@@ -17,9 +17,17 @@ namespace impl {
 class connection {
  public:
   boost::atomic<bool> is_paused;
+
+ private:
   DBusConnection* conn;
 
+ public:
   connection() : is_paused(true), conn(NULL) {}
+
+  connection(const connection& other) = delete;  // non construction-copyable
+  connection& operator=(const connection&) = delete;  // non copyable
+  connection(connection&&) = delete;
+  connection& operator=(connection&&) = delete;
 
   void open(boost::asio::io_service& io, int bus) {
     error e;
@@ -46,14 +54,15 @@ class connection {
 
   void request_name(const string& name) {
     error e;
-    dbus_bus_request_name(conn, name.c_str(),
-			 DBUS_NAME_FLAG_DO_NOT_QUEUE | DBUS_NAME_FLAG_REPLACE_EXISTING, e);
+    dbus_bus_request_name(
+        conn, name.c_str(),
+        DBUS_NAME_FLAG_DO_NOT_QUEUE | DBUS_NAME_FLAG_REPLACE_EXISTING, e);
     e.throw_if_set();
   }
 
   std::string get_unique_name() {
     error e;
-    auto name = dbus_bus_get_unique_name (conn);
+    auto name = dbus_bus_get_unique_name(conn);
     e.throw_if_set();
     return std::string(name);
   }
@@ -65,8 +74,11 @@ class connection {
     }
   }
 
-  message new_method_return(message &m) {
-  	return dbus_message_new_method_return(m);
+  message new_method_return(message& m) {
+    auto ptr = dbus_message_new_method_return(m);
+    auto x = message(ptr);
+    dbus_message_unref(ptr);
+    return x;
   }
 
   operator DBusConnection*() { return conn; }
@@ -75,11 +87,13 @@ class connection {
   message send_with_reply_and_block(message& m,
                                     int timeout_in_milliseconds = -1) {
     error e;
+
     DBusMessage* out = dbus_connection_send_with_reply_and_block(
         conn, m, timeout_in_milliseconds, e);
+
     e.throw_if_set();
     message reply(out);
-
+    dbus_message_unref(out);
     return reply;
   }
 

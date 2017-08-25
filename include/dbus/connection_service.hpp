@@ -63,7 +63,8 @@ class connection_service : public boost::asio::detail::service_base<connection_s
     if (timeout == Duration::zero()) {
       // TODO this can return false if it failed
       impl.send(m);
-      return message();
+      // TODO(ed) rework API to seperate blcoking and non blocking sends
+      return message(nullptr);
     } else {
       return impl.send_with_reply_and_block(
           m, std::chrono::milliseconds(timeout).count());
