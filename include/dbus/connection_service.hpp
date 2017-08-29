@@ -63,7 +63,7 @@ class connection_service : public boost::asio::detail::service_base<connection_s
     if (timeout == Duration::zero()) {
       // TODO this can return false if it failed
       impl.send(m);
-      // TODO(ed) rework API to seperate blcoking and non blocking sends
+      // TODO(ed) rework API to seperate blocking and non blocking sends
       return message(nullptr);
     } else {
       return impl.send_with_reply_and_block(
@@ -79,8 +79,7 @@ class connection_service : public boost::asio::detail::service_base<connection_s
     // begin asynchronous operation
     impl.start(this->get_io_service());
 
-    boost::asio::detail::async_result_init<
-        MessageHandler, void(boost::system::error_code, message)>
+    boost::asio::detail::async_result_init<MessageHandler, void(boost::system::error_code, message)>
         init(BOOST_ASIO_MOVE_CAST(MessageHandler)(handler));
     detail::async_send_op<typename boost::asio::handler_type<
         MessageHandler, void(boost::system::error_code, message)>::type>(

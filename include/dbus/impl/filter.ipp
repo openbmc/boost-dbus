@@ -10,7 +10,7 @@ namespace dbus {
 namespace impl {
 
 inline DBusHandlerResult filter_callback(DBusConnection* c, DBusMessage* m,
-                                  void* userdata) {
+                                         void* userdata) {
   try {
     filter& f = *static_cast<filter*>(userdata);
     message m_(m);

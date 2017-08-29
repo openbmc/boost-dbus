@@ -104,6 +104,7 @@ class connection {
 
   void send_with_reply(message& m, DBusPendingCall** p,
                        int timeout_in_milliseconds = -1) {
+    // TODO(Ed) check error code
     dbus_connection_send_with_reply(conn, m, p, timeout_in_milliseconds);
   }
 

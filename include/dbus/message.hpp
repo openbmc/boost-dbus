@@ -174,13 +174,19 @@ operator<<(message::packer& p, const Element& e) {
   return p;
 }
 
+// Specialization used to represent "dict" in dbus.
+// TODO(ed) generalize for all "map like" types instead of using vector
 template <typename Key, typename Value>
 message::packer& operator<<(message::packer& p,
                             const std::vector<std::pair<Key, Value>>& v) {
   message::packer sub;
-  char signature[] = {'{', element<Key>::code, element<Value>::code, '}', 0};
-
-  p.iter_.open_container(DBUS_TYPE_ARRAY, signature, sub.iter_);
+  static const constexpr auto sig =
+      element_signature<std::vector<std::pair<Key, Value>>>::code;
+  static_assert(std::tuple_size<decltype(sig)>::value > 2,
+                "Signature size must be greater than 2 characters long");
+  // Skip over the array part "a" of the signature to get the element signature.
+  // Open container expects JUST the portion after the "a"
+  p.iter_.open_container(sig[0], &sig[1], sub.iter_);
   for (auto& element : v) {
     sub << element;
   }
@@ -192,9 +198,11 @@ message::packer& operator<<(message::packer& p,
 template <typename Element>
 message::packer& operator<<(message::packer& p, const std::vector<Element>& v) {
   message::packer sub;
-  char signature[] = {element<Element>::code, 0};
-  p.iter_.open_container(element<std::vector<Element>>::code, signature,
-                         sub.iter_);
+  static const constexpr auto signature =
+      element_signature<std::vector<Element>>::code;
+  static_assert(std::tuple_size<decltype(signature)>::value > 2,
+                "Signature size must be greater than 2 characters long");
+  p.iter_.open_container(signature[0], &signature[1], sub.iter_);
   for (auto& element : v) {
     sub << element;
   }
@@ -226,12 +234,19 @@ inline message::packer& operator<<(message::packer& p, const string& e) {
 
 inline message::packer& operator<<(message::packer& p, const dbus_variant& v) {
   // Get the dbus typecode  of the variant being packed
-  char type = boost::apply_visitor(
-      [&](auto val) { return element<decltype(val)>::code; }, v);
-  char signature[] = {type, 0};
+  const char* type = boost::apply_visitor(
+      [&](auto val) {
+        static const constexpr auto sig =
+            element_signature<decltype(val)>::code;
+        static_assert(std::tuple_size<decltype(sig)>::value == 2,
+                      "Element signature for dbus_variant too long.  Expected "
+                      "length of 1");
+        return &sig[0];
+      },
+      v);
 
   message::packer sub;
-  p.iter_.open_container(element<dbus_variant>::code, signature, sub.iter_);
+  p.iter_.open_container(element<dbus_variant>::code, type, sub.iter_);
   boost::apply_visitor([&](auto val) { sub << val; }, v);
   p.iter_.close_container(sub.iter_);
 

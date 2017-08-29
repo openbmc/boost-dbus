@@ -34,8 +34,8 @@ typedef boost::uint64_t uint64;
 
 typedef std::string string;
 
-typedef boost::variant<std::string, bool, byte, int16, uint16, int32, uint32, int64,
-                       uint64, double>
+typedef boost::variant<std::string, bool, byte, int16, uint16, int32, uint32,
+                       int64, uint64, double>
     dbus_variant;
 
 struct object_path {
@@ -45,10 +45,119 @@ struct signature {
   string value;
 };
 
-/// Traits template for message elements
+template <std::size_t... Is>
+struct seq {};
+
+template <std::size_t N, std::size_t... Is>
+struct gen_seq : gen_seq<N - 1, N - 1, Is...> {};
+
+template <std::size_t... Is>
+struct gen_seq<0, Is...> : seq<Is...> {};
+
+template <std::size_t N1, std::size_t... I1, std::size_t N2, std::size_t... I2>
+constexpr std::array<char, N1 + N2 - 1> concat_helper(
+    const std::array<char, N1>& a1, const std::array<char, N2>& a2, seq<I1...>,
+    seq<I2...>) {
+  return {{a1[I1]..., a2[I2]...}};
+}
+
+template <std::size_t N1, std::size_t N2>
+// Initializer for the recursion
+constexpr std::array<char, N1 + N2 - 1> concat(const std::array<char, N1>& a1,
+                                               const std::array<char, N2>& a2) {
+  // note, this function expects both character arrays to be null
+  // terminated. The -1 below drops the null terminator on the first string
+  return concat_helper(a1, a2, gen_seq<N1 - 1>{}, gen_seq<N2>{});
+}
+
 /**
  * D-Bus Message elements are identified by unique integer type codes.
  */
+
+template <typename InvalidType>
+struct element_signature;
+
+template <>
+struct element_signature<bool> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_BOOLEAN, 0}};
+};
+
+template <>
+struct element_signature<byte> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_BYTE, 0}};
+};
+
+template <>
+struct element_signature<int16> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_INT16, 0}};
+};
+
+template <>
+struct element_signature<uint16> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_UINT16, 0}};
+};
+
+template <>
+struct element_signature<int32> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_INT32, 0}};
+};
+
+template <>
+struct element_signature<uint32> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_UINT32, 0}};
+};
+
+template <>
+struct element_signature<int64> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_INT64, 0}};
+};
+
+template <>
+struct element_signature<uint64> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_UINT64, 0}};
+};
+
+template <>
+struct element_signature<double> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_DOUBLE, 0}};
+};
+
+template <>
+struct element_signature<string> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_STRING, 0}};
+};
+
+template <>
+struct element_signature<dbus_variant> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_VARIANT, 0}};
+};
+
+template <>
+struct element_signature<object_path> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_OBJECT_PATH, 0}};
+};
+
+template <>
+struct element_signature<signature> {
+  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_SIGNATURE, 0}};
+};
+
+template <typename Key, typename Value>
+struct element_signature<std::pair<Key, Value>> {
+  static auto constexpr code =
+      concat(std::array<char, 2>{{'{', 0}},
+             concat(element_signature<Key>::code,
+                    concat(element_signature<Value>::code,
+                           std::array<char, 2>{{'}', 0}})));
+  ;
+};
+
+template <typename Element>
+struct element_signature<std::vector<Element>> {
+  static auto constexpr code = concat(std::array<char, 2>{{DBUS_TYPE_ARRAY, 0}},
+                                      element_signature<Element>::code);
+};
+
 template <typename InvalidType>
 struct element {
   static const int code = DBUS_TYPE_INVALID;
@@ -102,11 +211,6 @@ struct element<double> {
 template <>
 struct element<string> {
   static const int code = DBUS_TYPE_STRING;
-};
-
-template <typename Element>
-struct element<std::vector<Element>> {
-  static const int code = DBUS_TYPE_ARRAY;
 };
 
 template <>

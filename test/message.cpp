@@ -36,7 +36,7 @@ TEST(MessageTest, CallMessage) {
 }
 
 TEST(MessageTest, Misc) {
-    auto signal_name = std::string("PropertiesChanged");
+  auto signal_name = std::string("PropertiesChanged");
   dbus::endpoint test_endpoint(
       "org.freedesktop.Avahi",
       "/xyz/openbmc_project/sensors/temperature/LR_Brd_Temp",
@@ -48,11 +48,13 @@ TEST(MessageTest, Misc) {
 
   std::vector<dbus::dbus_variant> av{{std::string("hello world"), 1, 42}};
   m.pack(v, av);
+
+  double foo = 1.0;
+  m.pack(foo, foo, foo);
 }
 
-
 TEST(MessageTest, VariadicCallback) {
-    auto signal_name = std::string("PropertiesChanged");
+  auto signal_name = std::string("PropertiesChanged");
   dbus::endpoint test_endpoint(
       "org.freedesktop.Avahi",
       "/xyz/openbmc_project/sensors/temperature/LR_Brd_Temp",

@@ -42,7 +42,7 @@ template <typename MessageHandler>
 void async_send_op<MessageHandler>::operator()(impl::connection& c,
                                                message& m) {
   DBusPendingCall* p;
-  if (m.get_type() == "signal" || m.get_type() == "method_return") {
+  if (m.get_type() != "method_call") {
     // For some undocumented reason, dbus_connection_send_with_reply doesn't
     // work when the message type is signal.  To avoid a memory leak on the
     // dbuspending call when the callback doesn't fire, simply send it without a

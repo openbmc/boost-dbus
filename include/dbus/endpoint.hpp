@@ -25,8 +25,10 @@ class endpoint {
 
   endpoint(const string& process_name, const string& path,
            const string& interface, const string& member)
-      : process_name_(process_name), path_(path),
-        interface_(interface), member_(member) {}
+      : process_name_(process_name),
+        path_(path),
+        interface_(interface),
+        member_(member) {}
 
   const string& get_path() const { return path_; }
 
@@ -36,13 +38,17 @@ class endpoint {
 
   const string& get_member() const { return member_; }
 
-  const bool operator == (const endpoint &other) const {
-    return (process_name_ == other.process_name_ &&
-            path_ == other.path_ &&
-            interface_ == other.interface_ &&
-            member_ == other.member_);
+  const bool operator==(const endpoint& other) const {
+    return (process_name_ == other.process_name_ && path_ == other.path_ &&
+            interface_ == other.interface_ && member_ == other.member_);
   }
 };
+
+inline std::ostream& operator<<(std::ostream& os, const dbus::endpoint& e) {
+  os << "path=\"" << e.get_path() << "\" interface=\"" << e.get_interface()
+     << "\" process_name=\"" << e.get_process_name() << "\"";
+  return os;
+}
 
 }  // namespace dbus
 
