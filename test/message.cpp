@@ -27,9 +27,9 @@ TEST(MessageTest, CallMessage) {
                                              "org.freedesktop.Avahi.Server"),
                               "GetHostName");
 
-  m2 << 1;
+  m2.pack(1);
   int i;
-  m2 >> i;
+  m2.unpack(i);
   ASSERT_EQ(i, 1);
 
   // m.get_sender();

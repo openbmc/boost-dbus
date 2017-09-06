@@ -57,18 +57,14 @@ TEST(AvahiTest, ServiceBrowser) {
                              "org.freedesktop.Avahi.Server");
   // create new service browser
   dbus::message m1 = dbus::message::new_call(test_daemon, "ServiceBrowserNew");
-  m1.pack<int32_t>(-1)
-      .pack<int32_t>(-1)
-      .pack<std::string>("_http._tcp")
-      .pack<std::string>("local")
-      .pack<uint32_t>(0);
+  m1.pack((int32_t)-1, (int32_t)-1, "_http._tcp", "local", (uint32_t)(0));
 
   dbus::message r = system_bus->send(m1);
-  std::string browser_path;
-  r.unpack(browser_path);
-  testing::Test::RecordProperty("browserPath", browser_path);
+  dbus::object_path browser_path;
+  EXPECT_TRUE(r.unpack(browser_path));
+  testing::Test::RecordProperty("browserPath", browser_path.value);
 
-  dbus::match ma(system_bus, "type='signal',path='" + browser_path + "'");
+  dbus::match ma(system_bus, "type='signal',path='" + browser_path.value + "'");
   dbus::filter f(system_bus, [](dbus::message& m) {
     auto member = m.get_member();
     return member == "NameAcquired";

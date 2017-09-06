@@ -15,21 +15,21 @@ inline void message_iterator::init_append(message& m, message_iterator& i)
 {
   dbus_message_iter_init_append(m, &i.DBusMessageIter_);
 }
-inline void message_iterator::append_basic(int code, const void *value)
+inline bool message_iterator::append_basic(int code, const void *value)
 {
   // returns false if not enough memory- throw bad_alloc
-  dbus_message_iter_append_basic(&DBusMessageIter_, code, value);
+  return dbus_message_iter_append_basic(&DBusMessageIter_, code, value);
 }
-inline void message_iterator::open_container(int code, const char *signature, message_iterator& sub)
+inline bool message_iterator::open_container(int code, const char *signature, message_iterator& sub)
 {
   // returns false if not enough memory- throw bad_alloc
-  dbus_message_iter_open_container(&DBusMessageIter_, code, signature, &sub.DBusMessageIter_);
+  return dbus_message_iter_open_container(&DBusMessageIter_, code, signature, &sub.DBusMessageIter_);
 }
 
-inline void message_iterator::close_container(message_iterator& sub)
+inline bool message_iterator::close_container(message_iterator& sub)
 {
   // returns false if not enough memory- throw bad_alloc
-  dbus_message_iter_close_container(&DBusMessageIter_, &sub.DBusMessageIter_);
+  return dbus_message_iter_close_container(&DBusMessageIter_, &sub.DBusMessageIter_);
 }
 
 inline void message_iterator::abandon_container(message_iterator& sub)
@@ -37,10 +37,10 @@ inline void message_iterator::abandon_container(message_iterator& sub)
   dbus_message_iter_abandon_container(&DBusMessageIter_, &sub.DBusMessageIter_);
 }
 
-inline void message_iterator::append_fixed_array(int code, const void *value, int n_elements)
+inline bool message_iterator::append_fixed_array(int code, const void *value, int n_elements)
 {
   // returns false if not enough memory- throw bad_alloc
-  dbus_message_iter_append_fixed_array(&DBusMessageIter_, code, value, n_elements);
+  return dbus_message_iter_append_fixed_array(&DBusMessageIter_, code, value, n_elements);
 }
 
 inline bool message_iterator::init(message& m, message_iterator& i)

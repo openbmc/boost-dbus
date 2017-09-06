@@ -45,118 +45,9 @@ struct signature {
   string value;
 };
 
-template <std::size_t... Is>
-struct seq {};
-
-template <std::size_t N, std::size_t... Is>
-struct gen_seq : gen_seq<N - 1, N - 1, Is...> {};
-
-template <std::size_t... Is>
-struct gen_seq<0, Is...> : seq<Is...> {};
-
-template <std::size_t N1, std::size_t... I1, std::size_t N2, std::size_t... I2>
-constexpr std::array<char, N1 + N2 - 1> concat_helper(
-    const std::array<char, N1>& a1, const std::array<char, N2>& a2, seq<I1...>,
-    seq<I2...>) {
-  return {{a1[I1]..., a2[I2]...}};
-}
-
-template <std::size_t N1, std::size_t N2>
-// Initializer for the recursion
-constexpr std::array<char, N1 + N2 - 1> concat(const std::array<char, N1>& a1,
-                                               const std::array<char, N2>& a2) {
-  // note, this function expects both character arrays to be null
-  // terminated. The -1 below drops the null terminator on the first string
-  return concat_helper(a1, a2, gen_seq<N1 - 1>{}, gen_seq<N2>{});
-}
-
 /**
  * D-Bus Message elements are identified by unique integer type codes.
  */
-
-template <typename InvalidType>
-struct element_signature;
-
-template <>
-struct element_signature<bool> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_BOOLEAN, 0}};
-};
-
-template <>
-struct element_signature<byte> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_BYTE, 0}};
-};
-
-template <>
-struct element_signature<int16> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_INT16, 0}};
-};
-
-template <>
-struct element_signature<uint16> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_UINT16, 0}};
-};
-
-template <>
-struct element_signature<int32> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_INT32, 0}};
-};
-
-template <>
-struct element_signature<uint32> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_UINT32, 0}};
-};
-
-template <>
-struct element_signature<int64> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_INT64, 0}};
-};
-
-template <>
-struct element_signature<uint64> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_UINT64, 0}};
-};
-
-template <>
-struct element_signature<double> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_DOUBLE, 0}};
-};
-
-template <>
-struct element_signature<string> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_STRING, 0}};
-};
-
-template <>
-struct element_signature<dbus_variant> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_VARIANT, 0}};
-};
-
-template <>
-struct element_signature<object_path> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_OBJECT_PATH, 0}};
-};
-
-template <>
-struct element_signature<signature> {
-  static auto constexpr code = std::array<char, 2>{{DBUS_TYPE_SIGNATURE, 0}};
-};
-
-template <typename Key, typename Value>
-struct element_signature<std::pair<Key, Value>> {
-  static auto constexpr code =
-      concat(std::array<char, 2>{{'{', 0}},
-             concat(element_signature<Key>::code,
-                    concat(element_signature<Value>::code,
-                           std::array<char, 2>{{'}', 0}})));
-  ;
-};
-
-template <typename Element>
-struct element_signature<std::vector<Element>> {
-  static auto constexpr code = concat(std::array<char, 2>{{DBUS_TYPE_ARRAY, 0}},
-                                      element_signature<Element>::code);
-};
 
 template <typename InvalidType>
 struct element {
@@ -228,6 +119,11 @@ struct element<signature> {
   static const int code = DBUS_TYPE_SIGNATURE;
 };
 
+template <typename Element>
+struct element<std::vector<Element>> {
+  static const int code = DBUS_TYPE_ARRAY;
+};
+
 template <typename InvalidType>
 struct is_fixed_type {
   static const int value = false;
@@ -296,6 +192,94 @@ struct is_string_type<object_path> {
 template <>
 struct is_string_type<signature> {
   static const bool value = true;
+};
+
+template <std::size_t... Is>
+struct seq {};
+
+template <std::size_t N, std::size_t... Is>
+struct gen_seq : gen_seq<N - 1, N - 1, Is...> {};
+
+template <std::size_t... Is>
+struct gen_seq<0, Is...> : seq<Is...> {};
+
+template <std::size_t N1, std::size_t... I1, std::size_t N2, std::size_t... I2>
+constexpr std::array<char, N1 + N2 - 1> concat_helper(
+    const std::array<char, N1>& a1, const std::array<char, N2>& a2, seq<I1...>,
+    seq<I2...>) {
+  return {{a1[I1]..., a2[I2]...}};
+}
+
+template <std::size_t N1, std::size_t N2>
+// Initializer for the recursion
+constexpr const std::array<char, N1 + N2 - 1> concat(
+    const std::array<char, N1>& a1, const std::array<char, N2>& a2) {
+  // note, this function expects both character arrays to be null
+  // terminated. The -1 below drops the null terminator on the first string
+  return concat_helper(a1, a2, gen_seq<N1 - 1>{}, gen_seq<N2>{});
+}
+
+// Base case for types that should never be asserted
+template <typename Element, class Enable = void>
+struct element_signature {};
+
+// Element signature for building raw c_strings of known element_codes
+
+// Case for fixed "final" types (double, float ect) that have their own code by
+// default.,  This includes strings and variants.
+// Put another way, this is the catch for everything that is not a container
+template <typename Element>
+struct element_signature<
+    Element,
+    typename std::enable_if<is_fixed_type<Element>::value ||
+                            is_string_type<Element>::value ||
+                            std::is_same<Element, dbus_variant>::value>::type> {
+  static auto constexpr code = std::array<char, 2>{{element<Element>::code, 0}};
+};
+
+template <typename T>
+struct has_const_iterator {
+ private:
+  typedef char yes;
+  typedef struct { char array[2]; } no;
+
+  template <typename C>
+  static yes test(typename C::const_iterator*);
+  template <typename C>
+  static no test(...);
+
+ public:
+  static const bool value = sizeof(test<T>(0)) == sizeof(yes);
+  typedef T type;
+};
+
+// Specialization for "container" types.  Containers are defined as anything
+// that can be iterated through.  This allows running any iterable type, so long
+// as its value_type is a known dbus type (which could also be a container)
+// Note: technically std::string is an iterable container, so it needs to be
+// explicitly excluded from this specialization
+template <typename Container>
+struct element_signature<
+    Container,
+    typename std::enable_if<has_const_iterator<Container>::value &&
+                            !is_string_type<Container>::value>::type> {
+  static auto const constexpr code =
+      concat(std::array<char, 2>{{DBUS_TYPE_ARRAY, 0}},
+             element_signature<typename Container::value_type>::code);
+};
+
+// Specialization for std::pair type.  Std::pair is treated as a "dict entry"
+// element.  In dbus, dictionarys are represented as arrays of dict entries, so
+// this specialization builds type codes based on anything that produces a
+// std::pair and constructs the signature for the dict entry, for example {si}
+// would be a string of ints
+template <typename Key, typename Value>
+struct element_signature<std::pair<Key, Value>> {
+  static auto const constexpr code =
+      concat(std::array<char, 2>{{'{', 0}},
+             concat(element_signature<Key>::code,
+                    concat(element_signature<Value>::code,
+                           std::array<char, 2>{{'}', 0}})));
 };
 
 }  // namespace dbus

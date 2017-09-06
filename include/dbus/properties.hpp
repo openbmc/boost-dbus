@@ -90,26 +90,31 @@ constexpr auto apply(Tuple& t, F f) {
 }
 
 template <class Tuple>
-constexpr void unpack_into_tuple(Tuple& t, dbus::message& m) {
-  index_apply<std::tuple_size<Tuple>{}>(
-      [&](auto... Is) { m.unpack(std::get<Is>(t)...); });
+constexpr bool unpack_into_tuple(Tuple& t, dbus::message& m) {
+  return index_apply<std::tuple_size<Tuple>{}>(
+      [&](auto... Is) { return m.unpack(std::get<Is>(t)...); });
 }
 
 // Specialization for empty tuples.  No need to unpack if no arguments
-constexpr void unpack_into_tuple(std::tuple<>& t, dbus::message& m) {}
+constexpr bool unpack_into_tuple(std::tuple<>& t, dbus::message& m) {
+  return true;
+}
 
 template <typename... Args>
-constexpr void pack_tuple_into_msg(std::tuple<Args...>& t, dbus::message& m) {
-  index_apply<std::tuple_size<std::tuple<Args...>>{}>(
-      [&](auto... Is) { m.pack(std::get<Is>(t)...); });
+constexpr bool pack_tuple_into_msg(std::tuple<Args...>& t, dbus::message& m) {
+  return index_apply<std::tuple_size<std::tuple<Args...>>{}>(
+      [&](auto... Is) { return m.pack(std::get<Is>(t)...); });
 }
 
 // Specialization for empty tuples.  No need to pack if no arguments
-constexpr void pack_tuple_into_msg(std::tuple<>& t, dbus::message& m) {}
+constexpr bool pack_tuple_into_msg(std::tuple<>& t, dbus::message& m) {
+  return true;
+}
 
+// Specialization for single types.  Used when callbacks simply return one value
 template <typename Element>
-constexpr void pack_tuple_into_msg(Element& t, dbus::message& m) {
-  m.pack(t);
+constexpr bool pack_tuple_into_msg(Element& t, dbus::message& m) {
+  return m.pack(t);
 }
 
 // Base case for when I == the size of the tuple args.  Does nothing, as we
@@ -189,11 +194,28 @@ class LambdaDbusMethod : public DbusMethod {
   }
   void call(dbus::message& m) override {
     InputTupleType input_args;
-    unpack_into_tuple(input_args, m);
-    ResultType r = apply(input_args, h);
-    auto ret = dbus::message::new_return(m);
-    pack_tuple_into_msg(r, ret);
-    conn->send(ret, std::chrono::seconds(0));
+    if (unpack_into_tuple(input_args, m) == false) {
+      auto err = dbus::message::new_error(m, DBUS_ERROR_INVALID_ARGS, "");
+      conn->send(err, std::chrono::seconds(0));
+      return;
+    }
+    try {
+      ResultType r = apply(input_args, h);
+      auto ret = dbus::message::new_return(m);
+      if (pack_tuple_into_msg(r, ret) == false) {
+        auto err = dbus::message::new_error(
+            m, DBUS_ERROR_FAILED, "Handler had issue when packing response");
+        conn->send(err, std::chrono::seconds(0));
+        return;
+      }
+      conn->send(ret, std::chrono::seconds(0));
+    } catch (...) {
+      auto err = dbus::message::new_error(
+          m, DBUS_ERROR_FAILED,
+          "Handler threw exception while handling request.");
+      conn->send(err, std::chrono::seconds(0));
+      return;
+    }
   };
 
   std::vector<DbusArgument> get_args() override { return args; };
@@ -408,8 +430,7 @@ class DbusObject {
             throw std::runtime_error("interface not found");
           } else {
             // Todo, the set propery (signular) interface should support
-            // handing
-            // a variant.  THe below is expensive
+            // handing a variant.  The below is expensive
             std::vector<std::pair<std::string, dbus_variant>> v;
             v.emplace_back(property_name, value);
             interface_it->second->set_properties(v);

@@ -21,13 +21,13 @@ class message_iterator {
   // writing
   static void init_append(message &m, message_iterator &i);
 
-  void append_basic(int code, const void *value);
+  bool append_basic(int code, const void *value);
 
-  void open_container(int code, const char *signature, message_iterator &);
-  void close_container(message_iterator &);
+  bool open_container(int code, const char *signature, message_iterator &);
+  bool close_container(message_iterator &);
   void abandon_container(message_iterator &);
 
-  void append_fixed_array(int code, const void *value, int n_elements);
+  bool append_fixed_array(int code, const void *value, int n_elements);
 
   // reading
   static bool init(message &m, message_iterator &i);

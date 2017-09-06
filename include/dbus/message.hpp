@@ -119,19 +119,107 @@ class message {
     impl::message_iterator iter_;
     packer(message& m) { impl::message_iterator::init_append(m, iter_); }
     packer(){};
-    template <typename Element>
-    packer& pack(const Element& e) {
-      return *this << e;
-    }
 
     template <typename Element, typename... Args>
-    packer pack(const Element& e, const Args&... args) {
-      return this->pack(e).pack(args...);
+    bool pack(const Element& e, const Args&... args) {
+      if (this->pack(e) == false) {
+        return false;
+      } else {
+        return pack(args...);
+      }
+    }
+
+    template <typename Element>
+    typename boost::enable_if<is_fixed_type<Element>, bool>::type pack(
+        const Element& e) {
+      return iter_.append_basic(element<Element>::code, &e);
+    }
+
+    // Specialization used to represent "dict" in dbus.
+    // TODO(ed) generalize for all "map like" types instead of using vector
+    template <typename Key, typename Value>
+    bool pack(const std::vector<std::pair<Key, Value>>& v) {
+      static const constexpr auto sig =
+          element_signature<typename std::decay<decltype(v)>::type>::code;
+
+      static_assert(std::tuple_size<decltype(sig)>::value > 2,
+                    "Signature size must be greater than 2 characters long");
+      // Skip over the array part "a" of the signature to get the element
+      // signature.
+      // Open container expects JUST the portion after the "a" in the second arg
+      message::packer sub;
+      iter_.open_container(sig[0], &sig[1], sub.iter_);
+      for (auto& element : v) {
+        sub.pack(element);
+      }
+
+      return iter_.close_container(sub.iter_);
+    }
+
+    template <typename Element>
+    bool pack(const std::vector<Element>& v) {
+      message::packer sub;
+      static const constexpr auto signature =
+          element_signature<std::vector<Element>>::code;
+      static_assert(std::tuple_size<decltype(signature)>::value > 2,
+                    "Signature size must be greater than 2 characters long");
+      iter_.open_container(signature[0], &signature[1], sub.iter_);
+      for (auto& element : v) {
+        sub.pack(element);
+      }
+
+      return iter_.close_container(sub.iter_);
+    }
+
+    bool pack(const char* c) {
+      return iter_.append_basic(element<string>::code, &c);
+    }
+
+    template <typename Key, typename Value>
+    bool pack(const std::pair<Key, Value> element) {
+      message::packer dict_entry;
+      if (iter_.open_container(DBUS_TYPE_DICT_ENTRY, NULL, dict_entry.iter_) ==
+          false) {
+        return false;
+      }
+      if (dict_entry.pack(element.first) == false) {
+        return false;
+      };
+      if (dict_entry.pack(element.second) == false) {
+        return false;
+      };
+      return iter_.close_container(dict_entry.iter_);
+    }
+
+    bool pack(const string& e) {
+      const char* c = e.c_str();
+      return pack(c);
+    }
+
+    bool pack(const dbus_variant& v) {
+      // Get the dbus typecode  of the variant being packed
+      const char* type = boost::apply_visitor(
+          [&](auto val) {
+            static const constexpr auto sig =
+                element_signature<decltype(val)>::code;
+            static_assert(
+                std::tuple_size<decltype(sig)>::value == 2,
+                "Element signature for dbus_variant too long.  Expected "
+                "length of 1");
+            return &sig[0];
+          },
+          v);
+      message::packer sub;
+      iter_.open_container(element<dbus_variant>::code, type, sub.iter_);
+      boost::apply_visitor([&](const auto& val) { sub.pack(val); }, v);
+      iter_.close_container(sub.iter_);
+
+      return true;
     }
   };
 
   template <typename... Args>
-  packer pack(const Args&... args) {
+  bool pack(const Args&... args) {
     return packer(*this).pack(args...);
   }
 
@@ -140,19 +228,136 @@ class message {
     unpacker(message& m) { impl::message_iterator::init(m, iter_); }
     unpacker() {}
 
-    template <typename Element>
-    unpacker& unpack(Element& e) {
-      return *this >> e;
+    template <typename Element, typename... Args>
+    bool unpack(Element& e, Args&... args) {
+      if (unpack(e) == false) {
+        return false;
+      }
+      return unpack(args...);
     }
 
-    template <typename Element, typename... Args>
-    unpacker& unpack(Element& e, Args&... args) {
-      return unpack(e).unpack(args...);
+    // Basic type unpack
+    template <typename Element>
+    typename boost::enable_if<is_fixed_type<Element>, bool>::type unpack(
+        Element& e) {
+      if (iter_.get_arg_type() != element<Element>::code) {
+        return false;
+      }
+      iter_.get_basic(&e);
+      // ignoring return code here, as we might hit last element, and don't
+      // really care because get_arg_type will return invalid if we call it
+      // after we're over the struct boundary
+      iter_.next();
+      return true;
+    }
+
+    // std::string unpack specialization
+    bool unpack(string& s) {
+      if (iter_.get_arg_type() != element<string>::code) {
+        return false;
+      }
+      const char* c;
+      iter_.get_basic(&c);
+      s.assign(c);
+      iter_.next();
+      return true;
+    }
+
+    // object_path unpack specialization
+    bool unpack(object_path& s) {
+      if (iter_.get_arg_type() != element<object_path>::code) {
+        return false;
+      }
+      const char* c;
+      iter_.get_basic(&c);
+      s.value.assign(c);
+      iter_.next();
+      return true;
+    }
+
+    // object_path unpack specialization
+    bool unpack(signature& s) {
+      if (iter_.get_arg_type() != element<signature>::code) {
+        return false;
+      }
+      const char* c;
+      iter_.get_basic(&c);
+      s.value.assign(c);
+      iter_.next();
+      return true;
+    }
+
+    // variant unpack specialization
+    bool unpack(dbus_variant& v) {
+      if (iter_.get_arg_type() != element<dbus_variant>::code) {
+        return false;
+      }
+      message::unpacker sub;
+      iter_.recurse(sub.iter_);
+
+      char arg_type = sub.iter_.get_arg_type();
+
+      boost::mpl::for_each<dbus_variant::types>([&](auto t) {
+        if (arg_type == element<decltype(t)>::code) {
+          decltype(t) val_to_fill;
+          sub.unpack(val_to_fill);
+          v = val_to_fill;
+        }
+      });
+
+      iter_.next();
+      return true;
+    }
+
+    // dict entry unpack specialization
+    template <typename Key, typename Value>
+    bool unpack(std::pair<Key, Value>& v) {
+      auto this_code = iter_.get_arg_type();
+      // This can't use element<std::pair> because there is a difference between
+      // the dbus type code 'e' and the dbus signature code for dict entries
+      // '{'.  Element_signature will return the full signature, and will never
+      // return e, but we still want to type check it before recursing
+      if (this_code != DBUS_TYPE_DICT_ENTRY) {
+        return false;
+      }
+      message::unpacker sub;
+      iter_.recurse(sub.iter_);
+      if (!sub.unpack(v.first)) {
+        return false;
+      }
+      if (!sub.unpack(v.second)) {
+        return false;
+      }
+
+      iter_.next();
+      return true;
+    }
+
+    // dbus array / c++ vector unpack specialization
+    template <typename Element>
+    bool unpack(std::vector<Element>& s) {
+      auto top_level_arg_type = iter_.get_arg_type();
+      if (top_level_arg_type != element<std::vector<Element>>::code) {
+        return false;
+      }
+      message::unpacker sub;
+
+      iter_.recurse(sub.iter_);
+      auto arg_type = sub.iter_.get_arg_type();
+      while (arg_type != DBUS_TYPE_INVALID) {
+        s.emplace_back();
+        if (!sub.unpack(s.back())) {
+          return false;
+        }
+        arg_type = sub.iter_.get_arg_type();
+      }
+      iter_.next();
+      return true;
     }
   };
 
   template <typename... Args>
-  unpacker& unpack(Args&... args) {
+  bool unpack(Args&... args) {
     return unpacker(*this).unpack(args...);
   }
 
@@ -161,164 +366,6 @@ class message {
     return (str == NULL) ? "(null)" : str;
   }
 };
-
-template <typename Element>
-message::packer operator<<(message m, const Element& e) {
-  return message::packer(m).pack(e);
-}
-
-template <typename Element>
-typename boost::enable_if<is_fixed_type<Element>, message::packer&>::type
-operator<<(message::packer& p, const Element& e) {
-  p.iter_.append_basic(element<Element>::code, &e);
-  return p;
-}
-
-// Specialization used to represent "dict" in dbus.
-// TODO(ed) generalize for all "map like" types instead of using vector
-template <typename Key, typename Value>
-message::packer& operator<<(message::packer& p,
-                            const std::vector<std::pair<Key, Value>>& v) {
-  message::packer sub;
-  static const constexpr auto sig =
-      element_signature<std::vector<std::pair<Key, Value>>>::code;
-  static_assert(std::tuple_size<decltype(sig)>::value > 2,
-                "Signature size must be greater than 2 characters long");
-  // Skip over the array part "a" of the signature to get the element signature.
-  // Open container expects JUST the portion after the "a"
-  p.iter_.open_container(sig[0], &sig[1], sub.iter_);
-  for (auto& element : v) {
-    sub << element;
-  }
-
-  p.iter_.close_container(sub.iter_);
-  return p;
-}
-
-template <typename Element>
-message::packer& operator<<(message::packer& p, const std::vector<Element>& v) {
-  message::packer sub;
-  static const constexpr auto signature =
-      element_signature<std::vector<Element>>::code;
-  static_assert(std::tuple_size<decltype(signature)>::value > 2,
-                "Signature size must be greater than 2 characters long");
-  p.iter_.open_container(signature[0], &signature[1], sub.iter_);
-  for (auto& element : v) {
-    sub << element;
-  }
-
-  p.iter_.close_container(sub.iter_);
-  return p;
-}
-
-inline message::packer& operator<<(message::packer& p, const char* c) {
-  p.iter_.append_basic(element<string>::code, &c);
-  return p;
-}
-
-template <typename Key, typename Value>
-inline message::packer& operator<<(message::packer& p,
-                                   const std::pair<Key, Value> element) {
-  message::packer dict_entry;
-  p.iter_.open_container(DBUS_TYPE_DICT_ENTRY, NULL, dict_entry.iter_);
-  dict_entry << element.first;
-  dict_entry << element.second;
-  p.iter_.close_container(dict_entry.iter_);
-  return p;
-}
-
-inline message::packer& operator<<(message::packer& p, const string& e) {
-  const char* c = e.c_str();
-  return p << c;
-}
-
-inline message::packer& operator<<(message::packer& p, const dbus_variant& v) {
-  // Get the dbus typecode  of the variant being packed
-  const char* type = boost::apply_visitor(
-      [&](auto val) {
-        static const constexpr auto sig =
-            element_signature<decltype(val)>::code;
-        static_assert(std::tuple_size<decltype(sig)>::value == 2,
-                      "Element signature for dbus_variant too long.  Expected "
-                      "length of 1");
-        return &sig[0];
-      },
-      v);
-
-  message::packer sub;
-  p.iter_.open_container(element<dbus_variant>::code, type, sub.iter_);
-  boost::apply_visitor([&](auto val) { sub << val; }, v);
-  p.iter_.close_container(sub.iter_);
-
-  return p;
-}
-
-template <typename Element>
-message::unpacker operator>>(message m, Element& e) {
-  return message::unpacker(m).unpack(e);
-}
-
-template <typename Element>
-typename boost::enable_if<is_fixed_type<Element>, message::unpacker&>::type
-operator>>(message::unpacker& u, Element& e) {
-  u.iter_.get_basic(&e);
-  u.iter_.next();
-  return u;
-}
-
-inline message::unpacker& operator>>(message::unpacker& u, string& s) {
-  const char* c;
-  u.iter_.get_basic(&c);
-  s.assign(c);
-  u.iter_.next();
-  return u;
-}
-
-inline message::unpacker& operator>>(message::unpacker& u, dbus_variant& v) {
-  message::unpacker sub;
-  u.iter_.recurse(sub.iter_);
-
-  char arg_type = sub.iter_.get_arg_type();
-
-  boost::mpl::for_each<dbus_variant::types>([&](auto t) {
-    if (arg_type == element<decltype(t)>::code) {
-      decltype(t) val_to_fill;
-      sub >> val_to_fill;
-      v = val_to_fill;
-    }
-  });
-
-  u.iter_.next();
-  return u;
-}
-
-template <typename Key, typename Value>
-inline message::unpacker& operator>>(message::unpacker& u,
-                                     std::pair<Key, Value>& v) {
-  message::unpacker sub;
-  u.iter_.recurse(sub.iter_);
-  sub >> v.first;
-  sub >> v.second;
-
-  u.iter_.next();
-  return u;
-}
-
-template <typename Element>
-inline message::unpacker& operator>>(message::unpacker& u,
-                                     std::vector<Element>& s) {
-  message::unpacker sub;
-
-  u.iter_.recurse(sub.iter_);
-  auto arg_type = sub.iter_.get_arg_type();
-  while (arg_type != DBUS_TYPE_INVALID) {
-    s.emplace_back();
-    sub >> s.back();
-    arg_type = sub.iter_.get_arg_type();
-  }
-  u.iter_.next();
-  return u;
-}
 
 inline std::ostream& operator<<(std::ostream& os, const message& m) {
   os << "type='" << m.get_type() << "',"
