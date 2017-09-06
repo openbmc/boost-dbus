@@ -209,6 +209,19 @@ TEST(DbusPropertiesInterface, EmptyMethodServer) {
   io.run();
 }
 
+std::tuple<int> test_method(uint32_t x) {
+  std::cout << "method called.\n";
+  return std::make_tuple<int>(42);
+}
+
+class TestClass {
+ public:
+  static std::tuple<int> test_method(uint32_t x) {
+    std::cout << "method called.\n";
+    return std::make_tuple<int>(42);
+  }
+};
+
 TEST(DbusPropertiesInterface, MethodServer) {
   boost::asio::io_service io;
   auto bus = std::make_shared<dbus::connection>(io, dbus::bus::session);
@@ -223,18 +236,54 @@ TEST(DbusPropertiesInterface, MethodServer) {
       "org.freedesktop.My.Interface", bus);
   object->register_interface(iface);
 
-  iface->register_method("MyMethod", [](uint32_t x) {
+  // Test multiple ways to register methods
+  // Basic lambda
+  iface->register_method("MyMethodLambda", [](uint32_t x) {
 
     std::cout << "method called.  Got:" << x << "\n";
     return std::make_tuple<int>(42);
   });
 
-    iface->register_method("VoidMethod", []() {
+  // std::function
+  std::function<typename std::tuple<int>(uint32_t)> my_function =
+      [](uint32_t x) {
+
+        std::cout << "method called.  Got:" << x << "\n";
+        return std::make_tuple<int>(42);
+      };
+
+  iface->register_method("MyMethodStdFunction", my_function);
+
+  // Function pointer
+  iface->register_method("MyMethodFunctionPointer", &test_method);
+
+  // Class function pointer
+  TestClass t;
+  iface->register_method("MyClassFunctionPointer", t.test_method);
+
+  // const class function pointer
+  const TestClass t2;
+  iface->register_method("MyClassFunctionPointer", t2.test_method);
+
+  iface->register_method("VoidMethod", []() {
+
+    std::cout << "method called.\n";
+    return (uint32_t)42;
+  });
+
+  iface->register_method("VoidMethod", []() {
 
     std::cout << "method called.\n";
     return std::make_tuple<int>(42);
   });
 
+  // Test multiple ways to register methods
+  // Basic lambda
+  iface->register_method("MyMethodLambda", {"x"}, {"return_value_name"},
+                         [](uint32_t x) {
+                           std::cout << "method called.  Got:" << x << "\n";
+                           return 42;
+                         });
 
   dbus::endpoint test_daemon(bus->get_unique_name(), "/org/freedesktop/test1",
                              "org.freedesktop.DBus.Introspectable");

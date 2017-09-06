@@ -20,7 +20,7 @@ struct DbusArgument {
 
 class DbusMethod {
  public:
-  DbusMethod(std::string name, std::shared_ptr<dbus::connection>& conn)
+  DbusMethod(const std::string& name, std::shared_ptr<dbus::connection>& conn)
       : name(name), conn(conn){};
   virtual void call(dbus::message& m){};
   virtual std::vector<DbusArgument> get_args() { return {}; };
@@ -91,45 +91,73 @@ constexpr auto apply(Tuple& t, F f) {
 
 template <class Tuple>
 constexpr void unpack_into_tuple(Tuple& t, dbus::message& m) {
-  return index_apply<std::tuple_size<Tuple>{}>(
+  index_apply<std::tuple_size<Tuple>{}>(
       [&](auto... Is) { m.unpack(std::get<Is>(t)...); });
 }
 
 // Specialization for empty tuples.  No need to unpack if no arguments
 constexpr void unpack_into_tuple(std::tuple<>& t, dbus::message& m) {}
 
-template <class Tuple>
-constexpr void pack_tuple_into_msg(Tuple& t, dbus::message& m) {
-  return index_apply<std::tuple_size<Tuple>{}>(
+template <typename... Args>
+constexpr void pack_tuple_into_msg(std::tuple<Args...>& t, dbus::message& m) {
+  index_apply<std::tuple_size<std::tuple<Args...>>{}>(
       [&](auto... Is) { m.pack(std::get<Is>(t)...); });
 }
 
 // Specialization for empty tuples.  No need to pack if no arguments
 constexpr void pack_tuple_into_msg(std::tuple<>& t, dbus::message& m) {}
 
+template <typename Element>
+constexpr void pack_tuple_into_msg(Element& t, dbus::message& m) {
+  m.pack(t);
+}
+
 // Base case for when I == the size of the tuple args.  Does nothing, as we
 // should be done
 template <std::size_t I = 0, typename... Tp>
 inline typename std::enable_if<I == sizeof...(Tp), void>::type arg_types(
-    bool in, std::tuple<Tp...>& t, std::vector<DbusArgument>& v) {}
+    bool in, std::tuple<Tp...>& t, std::vector<DbusArgument>& v,
+    const std::vector<std::string>* arg_names = nullptr) {}
 
 // Case for when I < the size of tuple args.  Unpacks the tuple type into the
 // dbusargument object and names it appropriately.
 template <std::size_t I = 0, typename... Tp>
     inline typename std::enable_if <
-    I<sizeof...(Tp), void>::type arg_types(bool in, std::tuple<Tp...>& t,
-                                           std::vector<DbusArgument>& v) {
+    I<sizeof...(Tp), void>::type arg_types(
+        bool in, std::tuple<Tp...>& t, std::vector<DbusArgument>& v,
+        const std::vector<std::string>* arg_names = nullptr) {
   typedef typename std::tuple_element<I, std::tuple<Tp...>>::type element_type;
   auto constexpr sig = element_signature<element_type>::code;
-
-  if (in) {
-    auto name = "arg_" + std::to_string(I);
-    v.emplace_back("in", name, &sig[0]);
+  std::string name;
+  std::string direction;
+  if (arg_names == nullptr || arg_names->size() <= I) {
+    if (in) {
+      name = "arg_" + std::to_string(I);
+    } else {
+      name = "out_" + std::to_string(I);
+    }
   } else {
-    auto name = "out_" + std::to_string(I);
-    v.emplace_back("out", name, &sig[0]);
+    name = (*arg_names)[I];
   }
-  arg_types<I + 1, Tp...>(in, t, v);
+  v.emplace_back(in ? "in" : "out", name, &sig[0]);
+
+  arg_types<I + 1, Tp...>(in, t, v, arg_names);
+}
+
+// Special case for handling raw arguments returned from handlers.  Because they
+// don't get stored in a tuple, special handling is neccesary
+template <typename Element>
+void arg_types(bool in, Element& t, std::vector<DbusArgument>& v,
+               const std::vector<std::string>* arg_names = nullptr) {
+  auto constexpr sig = element_signature<Element>::code;
+  std::string name;
+  if (arg_names == nullptr || arg_names->size() < 1) {
+    name.assign("arg_0");
+  } else {
+    name = (*arg_names)[0];
+  }
+
+  v.emplace_back(in ? "in" : "out", name, &sig[0]);
 }
 
 template <typename Handler>
@@ -137,38 +165,77 @@ class LambdaDbusMethod : public DbusMethod {
  public:
   typedef function_traits<Handler> traits;
   typedef typename traits::decayed_arg_types InputTupleType;
-  typedef typename traits::result_type ResultTupleType;
-  LambdaDbusMethod(std::string name, std::shared_ptr<dbus::connection>& conn,
-                   Handler h)
-      : DbusMethod(name, conn), h(std::move(h)) {}
+  typedef typename traits::result_type ResultType;
+  LambdaDbusMethod(const std::string name,
+                   std::shared_ptr<dbus::connection>& conn, Handler h)
+      : DbusMethod(name, conn), h(std::move(h)) {
+    InputTupleType t;
+    arg_types(true, t, args);
+
+    ResultType o;
+    arg_types(false, o, args);
+  }
+
+  LambdaDbusMethod(const std::string& name,
+                   const std::vector<std::string>& input_arg_names,
+                   const std::vector<std::string>& output_arg_names,
+                   std::shared_ptr<dbus::connection>& conn, Handler h)
+      : DbusMethod(name, conn), h(std::move(h)) {
+    InputTupleType t;
+    arg_types(true, t, args, &input_arg_names);
+
+    ResultType o;
+    arg_types(false, o, args, &output_arg_names);
+  }
   void call(dbus::message& m) override {
     InputTupleType input_args;
     unpack_into_tuple(input_args, m);
-    ResultTupleType r = apply(input_args, h);
+    ResultType r = apply(input_args, h);
     auto ret = dbus::message::new_return(m);
     pack_tuple_into_msg(r, ret);
     conn->send(ret, std::chrono::seconds(0));
   };
 
-  std::vector<DbusArgument> get_args() override {
-    std::vector<DbusArgument> ret;
-    std::string s;
-    InputTupleType t;
-    arg_types(true, t, ret);
-
-    ResultTupleType o;
-    arg_types(false, o, ret);
-    return ret;
-  };
+  std::vector<DbusArgument> get_args() override { return args; };
   Handler h;
+  std::vector<DbusArgument> args;
 };
 
 class DbusSignal {
  public:
-  DbusSignal(std::string name) : name(name){};
-  std::string name;
+  DbusSignal(){};
+  virtual std::vector<DbusArgument> get_args() { return {}; }
+};
 
-  virtual std::vector<DbusArgument> get_args() { return {}; };
+template <typename... Args>
+class DbusTemplateSignal : public DbusSignal {
+ public:
+  DbusTemplateSignal(const std::string& name, const std::string& object_name,
+                     const std::string& interface_name,
+                     const std::vector<std::string>& names,
+                     std::shared_ptr<dbus::connection>& conn)
+      : DbusSignal(),
+        name(name),
+        object_name(object_name),
+        interface_name(interface_name),
+        conn(conn) {
+    std::tuple<Args...> tu;
+    arg_types(true, tu, args, &names);
+  };
+
+  void send(Args&...) {
+    dbus::endpoint endpoint("", object_name, interface_name);
+    auto m = dbus::message::new_signal(endpoint, name);
+    conn->send(m, std::chrono::seconds(0));
+  }
+
+  std::vector<DbusArgument> get_args() override { return args; };
+
+  std::vector<DbusArgument> args;
+  std::string name;
+  std::string object_name;
+  std::string interface_name;
+  std::shared_ptr<dbus::connection> conn;
 };
 
 class DbusInterface {
@@ -242,14 +309,33 @@ class DbusInterface {
         m, [](const boost::system::error_code ec, dbus::message r) {});
   }
 
-  void register_method(std::shared_ptr<DbusMethod>&& method) {
+  void register_method(std::shared_ptr<DbusMethod> method) {
     dbus_methods.emplace(method->name, method);
   }
 
   template <typename Handler>
-  void register_method(const std::string& name, Handler&& method) {
+  void register_method(const std::string& name, Handler method) {
     dbus_methods.emplace(name,
                          new LambdaDbusMethod<Handler>(name, conn, method));
+  }
+
+  template <typename Handler>
+  void register_method(const std::string& name,
+                       const std::vector<std::string>& input_arg_names,
+                       const std::vector<std::string>& output_arg_names,
+                       Handler method) {
+    dbus_methods.emplace(
+        name, new LambdaDbusMethod<Handler>(name, input_arg_names,
+                                            output_arg_names, conn, method));
+  }
+
+  template <typename... Args>
+  std::shared_ptr<DbusSignal> register_signal(
+      const std::string& name, const std::vector<std::string> arg_names) {
+    auto it = dbus_signals.emplace(
+        name, new DbusTemplateSignal<Args...>(name, object_name, interface_name,
+                                              arg_names, conn));
+    return it.first->second;
   }
 
   void call(dbus::message& m) {
@@ -277,8 +363,9 @@ class DbusObject {
     properties_iface = add_interface("org.freedesktop.DBus.Properties");
 
     properties_iface->register_method(
-        "Get", [&](const std::string& interface_name,
-                   const std::string& property_name) {
+        "Get", {"interface_name", "properties_name"}, {"value"},
+        [&](const std::string& interface_name,
+            const std::string& property_name) {
           auto interface_it = interfaces.find(interface_name);
           if (interface_it == interfaces.end()) {
             // Interface not found error
@@ -295,23 +382,24 @@ class DbusObject {
           }
         });
 
-    properties_iface->register_method("GetAll", [&](const std::string&
-                                                        interface_name) {
-      auto interface_it = interfaces.find(interface_name);
-      if (interface_it == interfaces.end()) {
-        // Interface not found error
-        throw std::runtime_error("interface not found");
-      } else {
-        std::vector<std::pair<std::string, dbus_variant>> v;
-        for (auto& element : properties_iface->get_properties_map()) {
-          v.emplace_back(element.first, element.second);
-        }
-        return std::tuple<std::vector<std::pair<std::string, dbus_variant>>>(v);
-      }
-    });
-    // TODO(Ed) support returning nothing
     properties_iface->register_method(
-        "Set",
+        "GetAll", {"interface_name"}, {"properties"},
+        [&](const std::string& interface_name) {
+          auto interface_it = interfaces.find(interface_name);
+          if (interface_it == interfaces.end()) {
+            // Interface not found error
+            throw std::runtime_error("interface not found");
+          } else {
+            std::vector<std::pair<std::string, dbus_variant>> v;
+            for (auto& element : properties_iface->get_properties_map()) {
+              v.emplace_back(element.first, element.second);
+            }
+            return std::tuple<
+                std::vector<std::pair<std::string, dbus_variant>>>(v);
+          }
+        });
+    properties_iface->register_method(
+        "Set", {"interface_name", "properties_name", "value"}, {},
         [&](const std::string& interface_name, const std::string& property_name,
             const dbus_variant& value) {
           auto interface_it = interfaces.find(interface_name);
@@ -328,6 +416,12 @@ class DbusObject {
             return std::tuple<>();
           }
         });
+
+    properties_iface->register_signal<
+        std::string, std::vector<std::pair<std::string, dbus_variant>>,
+        std::vector<std::string>>(
+        "PropertiesChanged",
+        {"interface_name", "changed_properties", "invalidated_properties"});
   }
 
   std::shared_ptr<DbusInterface> add_interface(const std::string& name) {
@@ -342,8 +436,7 @@ class DbusObject {
     const static dbus::endpoint endpoint("", object_name,
                                          "org.freedesktop.DBus.ObjectManager");
 
-    const static std::string signal_name("InterfacesAdded");
-    auto m = message::new_signal(endpoint, signal_name);
+    auto m = message::new_signal(endpoint, "InterfacesAdded");
     typedef std::vector<std::pair<std::string, dbus_variant>> properties_dict;
     std::vector<std::pair<std::string, properties_dict>> sig;
     sig.emplace_back(interface->get_interface_name(), properties_dict());
@@ -353,7 +446,8 @@ class DbusObject {
     }
 
     m.pack(object_name, sig);
-    conn->send(m);
+    // TODO(ed)
+    // conn->send(m, std::chrono::seconds(0));
   }
 
   auto get_interfaces() { return interfaces; }
@@ -370,6 +464,8 @@ class DbusObject {
 
   // dbus::filter properties_filter;
   std::shared_ptr<DbusInterface> properties_iface;
+
+  std::shared_ptr<DbusInterface> object_manager_iface;
 
   std::function<void(boost::system::error_code, message)> callback;
   boost::container::flat_map<std::string, std::shared_ptr<DbusInterface>>
@@ -435,6 +531,7 @@ class DbusObjectServer {
   std::shared_ptr<dbus::connection>& get_connection() { return conn; }
   void on_introspect(const boost::system::error_code ec, dbus::message m) {
     auto xml = get_xml_for_path(m.get_path());
+    std::cout << "path: " << m.get_path() << "\n" << xml << "\n";
     auto ret = dbus::message::new_return(m);
     ret.pack(xml);
     conn->async_send(
@@ -553,6 +650,13 @@ class DbusObjectServer {
             "    </signal>"
             "  </interface>";
 
+        xml +=
+            "<interface name=\"org.freedesktop.DBus.Introspectable\">"
+            "    <method name=\"Introspect\">"
+            "        <arg type=\"s\" name=\"xml_data\" direction=\"out\"/>"
+            "    </method>"
+            "</interface>";
+
         for (auto& interface_pair : object->interfaces) {
           xml += "<interface name=\"";
           xml += interface_pair.first;
@@ -591,7 +695,7 @@ class DbusObjectServer {
           for (auto& property : interface_pair.second->get_properties_map()) {
             xml += "<property name=\"";
             xml += property.first;
-            xml += "\" type =\"";
+            xml += "\" type=\"";
 
             std::string type = std::string(boost::apply_visitor(
                 [&](auto val) {
@@ -601,7 +705,7 @@ class DbusObjectServer {
                 },
                 property.second));
             xml += type;
-            xml += "\" direction =\"";
+            xml += "\" access=\"";
             // TODO direction can be readwrite, read, or write.  Need to
             // make this configurable
             xml += "readwrite";
