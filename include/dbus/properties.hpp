@@ -30,93 +30,6 @@ class DbusMethod {
 
 enum class UpdateType { VALUE_CHANGE_ONLY, FORCE };
 
-// primary template.
-template <class T>
-struct function_traits : function_traits<decltype(&T::operator())> {};
-
-// partial specialization for function type
-template <class R, class... Args>
-struct function_traits<R(Args...)> {
-  using result_type = R;
-  using argument_types = std::tuple<Args...>;
-  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
-};
-
-// partial specialization for function pointer
-template <class R, class... Args>
-struct function_traits<R (*)(Args...)> {
-  using result_type = R;
-  using argument_types = std::tuple<Args...>;
-  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
-};
-
-// partial specialization for std::function
-template <class R, class... Args>
-struct function_traits<std::function<R(Args...)>> {
-  using result_type = R;
-  using argument_types = std::tuple<Args...>;
-  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
-};
-
-// partial specialization for pointer-to-member-function (i.e., operator()'s)
-template <class T, class R, class... Args>
-struct function_traits<R (T::*)(Args...)> {
-  using result_type = R;
-  using argument_types = std::tuple<Args...>;
-  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
-};
-
-template <class T, class R, class... Args>
-struct function_traits<R (T::*)(Args...) const> {
-  using result_type = R;
-  using argument_types = std::tuple<Args...>;
-  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
-};
-
-template <class F, size_t... Is>
-constexpr auto index_apply_impl(F f, std::index_sequence<Is...>) {
-  return f(std::integral_constant<size_t, Is>{}...);
-}
-
-template <size_t N, class F>
-constexpr auto index_apply(F f) {
-  return index_apply_impl(f, std::make_index_sequence<N>{});
-}
-
-template <class Tuple, class F>
-constexpr auto apply(Tuple& t, F f) {
-  return index_apply<std::tuple_size<Tuple>{}>(
-      [&](auto... Is) { return f(std::get<Is>(t)...); });
-}
-
-template <class Tuple>
-constexpr bool unpack_into_tuple(Tuple& t, dbus::message& m) {
-  return index_apply<std::tuple_size<Tuple>{}>(
-      [&](auto... Is) { return m.unpack(std::get<Is>(t)...); });
-}
-
-// Specialization for empty tuples.  No need to unpack if no arguments
-constexpr bool unpack_into_tuple(std::tuple<>& t, dbus::message& m) {
-  return true;
-}
-
-template <typename... Args>
-constexpr bool pack_tuple_into_msg(std::tuple<Args...>& t, dbus::message& m) {
-  return index_apply<std::tuple_size<std::tuple<Args...>>{}>(
-      [&](auto... Is) { return m.pack(std::get<Is>(t)...); });
-}
-
-// Specialization for empty tuples.  No need to pack if no arguments
-constexpr bool pack_tuple_into_msg(std::tuple<>& t, dbus::message& m) {
-  return true;
-}
-
-// Specialization for single types.  Used when callbacks simply return one value
-template <typename Element>
-constexpr bool pack_tuple_into_msg(Element& t, dbus::message& m) {
-  return m.pack(t);
-}
-
 // Base case for when I == the size of the tuple args.  Does nothing, as we
 // should be done
 template <std::size_t TupleIndex = 0, typename... Tp>
@@ -201,7 +114,7 @@ class LambdaDbusMethod : public DbusMethod {
       return;
     }
     try {
-      ResultType r = apply(input_args, h);
+      ResultType r = apply(h, input_args);
       auto ret = dbus::message::new_return(m);
       if (pack_tuple_into_msg(r, ret) == false) {
         auto err = dbus::message::new_error(

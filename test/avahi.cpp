@@ -229,6 +229,62 @@ TEST(BOOST_DBUS, MultipleSensorChanged) {
   io.run();
 }
 
+TEST(BOOST_DBUS, MethodCallEx) {
+  boost::asio::io_service io;
+  // Expiration timer to stop tests if they fail
+  boost::asio::deadline_timer t(io, boost::posix_time::seconds(10));
+  t.async_wait([&](const boost::system::error_code&) {
+    io.stop();
+    FAIL() << "Callback was never called\n";
+  });
+
+  auto system_bus = std::make_shared<dbus::connection>(io, dbus::bus::session);
+  std::string requested_name = system_bus->get_unique_name();
+
+  dbus::filter f(system_bus, [requested_name](dbus::message& m) {
+    return m.get_sender() == requested_name;
+  });
+
+  std::function<void(boost::system::error_code, dbus::message)> method_handler =
+      [&](boost::system::error_code ec, dbus::message s) {
+        if (ec) {
+          FAIL() << ec;
+        } else {
+          std::string intf_name, prop_name;
+          EXPECT_EQ(s.get_signature(), "ss");
+          EXPECT_EQ(s.get_member(), "Get");
+          EXPECT_EQ(s.get_interface(), "org.freedesktop.DBus.Properties");
+          s.unpack(intf_name, prop_name);
+
+          EXPECT_EQ(intf_name, "xyz.openbmc_project.fwupdate1");
+          EXPECT_EQ(prop_name, "State");
+
+          // send a reply
+          auto r = system_bus->reply(s);
+          r.pack("IDLE");
+          system_bus->async_send(
+              r, [&](boost::system::error_code ec, dbus::message s) {});
+          io.stop();
+        }
+      };
+  f.async_dispatch(method_handler);
+
+  dbus::endpoint test_endpoint(requested_name, "/xyz/openbmc_project/fwupdate1",
+                               "org.freedesktop.DBus.Properties", "Get");
+  system_bus->async_method_call(
+      [&](const boost::system::error_code ec,
+          const dbus::dbus_variant& status) {
+        if (ec) {
+          FAIL();
+        } else {
+          EXPECT_EQ(boost::get<std::string>(status), "IDLE");
+        }
+      },
+      test_endpoint, "xyz.openbmc_project.fwupdate1", "State");
+
+  io.run();
+}
+
 TEST(BOOST_DBUS, MethodCall) {
   boost::asio::io_service io;
 

@@ -28,6 +28,15 @@ class message {
 
  public:
   /// Create a method call message
+  static message new_call(const endpoint& destination) {
+    auto x = message(dbus_message_new_method_call(
+        destination.get_process_name().c_str(), destination.get_path().c_str(),
+        destination.get_interface().c_str(), destination.get_member().c_str()));
+    dbus_message_unref(x.message_.get());
+    return x;
+  }
+
+  /// Create a method call message
   static message new_call(const endpoint& destination,
                           const string& method_name) {
     auto x = message(dbus_message_new_method_call(
@@ -223,6 +232,9 @@ class message {
     return packer(*this).pack(args...);
   }
 
+  // noop for template functions that have no arguments
+  bool pack() { return true; }
+
   struct unpacker {
     impl::message_iterator iter_;
     unpacker(message& m) { impl::message_iterator::init(m, iter_); }
@@ -378,6 +390,93 @@ inline std::ostream& operator<<(std::ostream& os, const message& m) {
 }
 
 }  // namespace dbus
+
+// primary template.
+template <class T>
+struct function_traits : function_traits<decltype(&T::operator())> {};
+
+// partial specialization for function type
+template <class R, class... Args>
+struct function_traits<R(Args...)> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
+};
+
+// partial specialization for function pointer
+template <class R, class... Args>
+struct function_traits<R (*)(Args...)> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
+};
+
+// partial specialization for std::function
+template <class R, class... Args>
+struct function_traits<std::function<R(Args...)>> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
+};
+
+// partial specialization for pointer-to-member-function (i.e., operator()'s)
+template <class T, class R, class... Args>
+struct function_traits<R (T::*)(Args...)> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
+};
+
+template <class T, class R, class... Args>
+struct function_traits<R (T::*)(Args...) const> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+  using decayed_arg_types = std::tuple<typename std::decay<Args>::type...>;
+};
+
+template <class F, size_t... Is>
+constexpr auto index_apply_impl(F f, std::index_sequence<Is...>) {
+  return f(std::integral_constant<size_t, Is>{}...);
+}
+
+template <size_t N, class F>
+constexpr auto index_apply(F f) {
+  return index_apply_impl(f, std::make_index_sequence<N>{});
+}
+
+template <class Tuple, class F>
+constexpr auto apply(F f, Tuple& t) {
+  return index_apply<std::tuple_size<Tuple>{}>(
+      [&](auto... Is) { return f(std::get<Is>(t)...); });
+}
+
+template <class Tuple>
+constexpr bool unpack_into_tuple(Tuple& t, dbus::message& m) {
+  return index_apply<std::tuple_size<Tuple>{}>(
+      [&](auto... Is) { return m.unpack(std::get<Is>(t)...); });
+}
+
+// Specialization for empty tuples.  No need to unpack if no arguments
+constexpr bool unpack_into_tuple(std::tuple<>& t, dbus::message& m) {
+  return true;
+}
+
+template <typename... Args>
+constexpr bool pack_tuple_into_msg(std::tuple<Args...>& t, dbus::message& m) {
+  return index_apply<std::tuple_size<std::tuple<Args...>>{}>(
+      [&](auto... Is) { return m.pack(std::get<Is>(t)...); });
+}
+
+// Specialization for empty tuples.  No need to pack if no arguments
+constexpr bool pack_tuple_into_msg(std::tuple<>& t, dbus::message& m) {
+  return true;
+}
+
+// Specialization for single types.  Used when callbacks simply return one value
+template <typename Element>
+constexpr bool pack_tuple_into_msg(Element& t, dbus::message& m) {
+  return m.pack(t);
+}
 
 #include <dbus/impl/message_iterator.ipp>
 

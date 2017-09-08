@@ -53,7 +53,6 @@ class connection : public boost::asio::basic_io_object<connection_service> {
     this->get_service().open(this->get_implementation(), bus);
   }
 
-
   /// Request a name on the bus.
   /**
  * @param name The name requested on the bus
@@ -64,12 +63,11 @@ class connection : public boost::asio::basic_io_object<connection_service> {
  * there was some other error.
  */
   void request_name(const string& name) {
-      this->get_implementation().request_name(name);
+    this->get_implementation().request_name(name);
   }
 
-
-  std::string get_unique_name(){
-      return this->get_implementation().get_unique_name();
+  std::string get_unique_name() {
+    return this->get_implementation().get_unique_name();
   }
 
   /// Reply to a message.
@@ -111,7 +109,7 @@ class connection : public boost::asio::basic_io_object<connection_service> {
  * timeout was not 0), or there was some other error.
  */
   template <typename Duration>
-  message send(message& m, const Duration& t = std::chrono::seconds(0)) {
+  message send(message& m, const Duration& t) {
     return this->get_service().send(this->get_implementation(), m, t);
   }
 
@@ -123,6 +121,7 @@ class connection : public boost::asio::basic_io_object<connection_service> {
  *
  * @return Asynchronous result
  */
+
   template <typename MessageHandler>
   inline BOOST_ASIO_INITFN_RESULT_TYPE(MessageHandler,
                                        void(boost::system::error_code, message))
@@ -130,6 +129,48 @@ class connection : public boost::asio::basic_io_object<connection_service> {
     return this->get_service().async_send(
         this->get_implementation(), m,
         BOOST_ASIO_MOVE_CAST(MessageHandler)(handler));
+  }
+
+  // Small helper class for stipping off the error code from the function
+  // agrument definitions so unpack can be called appriately
+  template <typename T>
+  struct strip_first_arg {};
+
+  template <typename FirstArg, typename... Rest>
+  struct strip_first_arg<std::tuple<FirstArg, Rest...>> {
+    typedef std::tuple<Rest...> type;
+  };
+
+  template <typename MessageHandler, typename... InputArgs>
+  void async_method_call(MessageHandler handler, const dbus::endpoint& e,
+                         const InputArgs&... a) {
+    message m = dbus::message::new_call(e);
+    if (!m.pack(a...)) {
+      // TODO(ed) Set error code?
+
+    } else {
+      async_send(m, [&](boost::system::error_code ec, dbus::message r) {
+        // Make a copy of the error code so we can modify it
+        typedef typename function_traits<MessageHandler>::decayed_arg_types
+            function_tuple;
+        typedef typename strip_first_arg<function_tuple>::type unpack_type;
+        unpack_type response_args;
+        if (!ec) {
+          if (!unpack_into_tuple(response_args, r)) {
+            // Set error code
+            ec = boost::system::errc::make_error_code(
+                boost::system::errc::invalid_argument);
+          }
+        }
+        // Should this (the callback) be done in a try catch block?
+        // should throwing from a handler flow all the way to the io_service?
+
+        // Note.  Callback is called whether or not the unpack was sucessful
+        // to allow the user to implement their own handling
+        index_apply<std::tuple_size<unpack_type>{}>(
+            [&](auto... Is) { handler(ec, std::get<Is>(response_args)...); });
+      });
+    }
   }
 
   /// Create a new match.
