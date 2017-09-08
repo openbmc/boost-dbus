@@ -238,10 +238,10 @@ TEST(BOOST_DBUS, MethodCall) {
     FAIL() << "Callback was never called\n";
   });
 
-  auto system_bus = std::make_shared<dbus::connection>(io, dbus::bus::system);
-  std::string requested_name = system_bus->get_unique_name();
+  auto bus = std::make_shared<dbus::connection>(io, dbus::bus::session);
+  std::string requested_name = bus->get_unique_name();
 
-  dbus::filter f(system_bus, [](dbus::message& m) {
+  dbus::filter f(bus, [](dbus::message& m) {
     return (m.get_member() == "Get" &&
             m.get_interface() == "org.freedesktop.DBus.Properties" &&
             m.get_signature() == "ss");
@@ -259,9 +259,9 @@ TEST(BOOST_DBUS, MethodCall) {
           EXPECT_EQ(prop_name, "State");
 
           // send a reply so dbus doesn't get angry?
-          auto r = system_bus->reply(s);
+          auto r = bus->reply(s);
           r.pack("IDLE");
-          system_bus->async_send(
+          bus->async_send(
               r, [&](boost::system::error_code ec, dbus::message s) {});
           io.stop();
         }
@@ -275,7 +275,7 @@ TEST(BOOST_DBUS, MethodCall) {
   auto m = dbus::message::new_call(test_endpoint, method_name);
 
   m.pack("xyz.openbmc_project.fwupdate1", "State");
-  system_bus->async_send(m, [&](boost::system::error_code ec, dbus::message s) {
+  bus->async_send(m, [&](boost::system::error_code ec, dbus::message s) {
     std::cerr << "received s: " << s << std::endl;
   });
 
