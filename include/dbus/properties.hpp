@@ -119,34 +119,35 @@ constexpr bool pack_tuple_into_msg(Element& t, dbus::message& m) {
 
 // Base case for when I == the size of the tuple args.  Does nothing, as we
 // should be done
-template <std::size_t I = 0, typename... Tp>
-inline typename std::enable_if<I == sizeof...(Tp), void>::type arg_types(
-    bool in, std::tuple<Tp...>& t, std::vector<DbusArgument>& v,
-    const std::vector<std::string>* arg_names = nullptr) {}
+template <std::size_t TupleIndex = 0, typename... Tp>
+inline typename std::enable_if<TupleIndex == sizeof...(Tp), void>::type
+arg_types(bool in, std::tuple<Tp...>& t, std::vector<DbusArgument>& v,
+          const std::vector<std::string>* arg_names = nullptr) {}
 
 // Case for when I < the size of tuple args.  Unpacks the tuple type into the
 // dbusargument object and names it appropriately.
-template <std::size_t I = 0, typename... Tp>
+template <std::size_t TupleIndex = 0, typename... Tp>
     inline typename std::enable_if <
-    I<sizeof...(Tp), void>::type arg_types(
+    TupleIndex<sizeof...(Tp), void>::type arg_types(
         bool in, std::tuple<Tp...>& t, std::vector<DbusArgument>& v,
         const std::vector<std::string>* arg_names = nullptr) {
-  typedef typename std::tuple_element<I, std::tuple<Tp...>>::type element_type;
+  typedef typename std::tuple_element<TupleIndex, std::tuple<Tp...>>::type
+      element_type;
   auto constexpr sig = element_signature<element_type>::code;
   std::string name;
   std::string direction;
-  if (arg_names == nullptr || arg_names->size() <= I) {
+  if (arg_names == nullptr || arg_names->size() <= TupleIndex) {
     if (in) {
-      name = "arg_" + std::to_string(I);
+      name = "arg_" + std::to_string(TupleIndex);
     } else {
-      name = "out_" + std::to_string(I);
+      name = "out_" + std::to_string(TupleIndex);
     }
   } else {
-    name = (*arg_names)[I];
+    name = (*arg_names)[TupleIndex];
   }
   v.emplace_back(in ? "in" : "out", name, &sig[0]);
 
-  arg_types<I + 1, Tp...>(in, t, v, arg_names);
+  arg_types<TupleIndex + 1, Tp...>(in, t, v, arg_names);
 }
 
 // Special case for handling raw arguments returned from handlers.  Because they
