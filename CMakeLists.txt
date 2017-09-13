@@ -12,8 +12,6 @@ cmake_minimum_required(VERSION 2.8)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
-#SET(HUNTER_STATUS_DEBUG ON)
 option(HUNTER_ENABLED "Enable hunter package pulling" OFF)
 
 include("cmake/HunterGate.cmake")
@@ -26,7 +24,7 @@ project(boost-dbus CXX)
 
 ###############
 # C++ options
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")#-std=c++0x")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/test)
 
@@ -49,26 +47,27 @@ hunter_add_package(dbus)
 find_package(dbus REQUIRED) # Include functions provided by PkgConfig module.
 include_directories(${DBUS_INCLUDE_DIRS})
 
-
 hunter_add_package(pthread-stubs)
 find_package (Threads)
+
+##############
+# Install
+add_library(boost-dbus INTERFACE)
+target_include_directories(boost-dbus INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include ${DBUS_INCLUDE_DIRS})
+target_link_libraries(boost-dbus INTERFACE ${DBUS_LIBRARIES})
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include DESTINATION include)
+
+##############
+# Tests
+enable_testing()
+
+add_executable(dbustests "test/avahi.cpp" "test/message.cpp" "test/error.cpp" "test/dbusPropertiesServer.cpp")
 
 ##############
 # import GTest
 hunter_add_package(GTest)
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
-
-
-
-##############
-# Tests
-enable_testing()
-
-
-add_executable(dbustests "test/avahi.cpp" "test/message.cpp" "test/error.cpp" "test/dbusPropertiesServer.cpp")
-target_link_libraries(dbustests ${Boost_LIBRARIES})
-target_link_libraries(dbustests ${DBUS_LIBRARIES})
 
 if (${HUNTER_ENABLED})
     find_package(GMock CONFIG REQUIRED)
@@ -80,9 +79,4 @@ endif()
 target_link_libraries(dbustests ${CMAKE_THREAD_LIBS_INIT})
 add_test(dbustests dbustests "--gtest_output=xml:${test_name}.xml")
 
-##############
-# Install
-Add_library(boost-dbus INTERFACE)
-target_include_directories(boost-dbus INTERFACE include/)
-install(DIRECTORY include/ DESTINATION include)
-
+target_link_libraries(dbustests boost-dbus)
