@@ -159,7 +159,7 @@ class DbusTemplateSignal : public DbusSignal {
     arg_types(true, tu, args, &names);
   };
 
-  void send(Args&...) {
+  void send(const Args&...) {
     dbus::endpoint endpoint("", object_name, interface_name);
     auto m = dbus::message::new_signal(endpoint, name);
     conn->send(m, std::chrono::seconds(0));
@@ -266,12 +266,12 @@ class DbusInterface {
   }
 
   template <typename... Args>
-  std::shared_ptr<DbusSignal> register_signal(
+  std::shared_ptr<DbusTemplateSignal<Args...>> register_signal(
       const std::string& name, const std::vector<std::string> arg_names) {
-    auto it = dbus_signals.emplace(
-        name, new DbusTemplateSignal<Args...>(name, object_name, interface_name,
-                                              arg_names, conn));
-    return it.first->second;
+    auto sig = std::make_shared<DbusTemplateSignal<Args...>>(
+        name, object_name, interface_name, arg_names, conn);
+    dbus_signals.emplace(name, sig);
+    return sig;
   }
 
   void call(dbus::message& m) {

@@ -46,9 +46,6 @@ DisableFormat:   false
 ExperimentalAutoDetectBinPacking: false
 ForEachMacros:   [ foreach, Q_FOREACH, BOOST_FOREACH ]
 IncludeCategories: 
-
-  - Regex:           '^[<"](crow)'
-    Priority:        5
   - Regex:           '^[<"](boost)'
     Priority:        6
   - Regex:           '^[<"](gtest|gmock)'

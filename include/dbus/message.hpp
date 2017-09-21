@@ -144,39 +144,31 @@ class message {
       return iter_.append_basic(element<Element>::code, &e);
     }
 
-    // Specialization used to represent "dict" in dbus.
-    // TODO(ed) generalize for all "map like" types instead of using vector
-    template <typename Key, typename Value>
-    bool pack(const std::vector<std::pair<Key, Value>>& v) {
-      static const constexpr auto sig =
-          element_signature<typename std::decay<decltype(v)>::type>::code;
-
-      static_assert(std::tuple_size<decltype(sig)>::value > 2,
-                    "Signature size must be greater than 2 characters long");
-      // Skip over the array part "a" of the signature to get the element
-      // signature.
-      // Open container expects JUST the portion after the "a" in the second arg
-      message::packer sub;
-      iter_.open_container(sig[0], &sig[1], sub.iter_);
-      for (auto& element : v) {
-        sub.pack(element);
-      }
-
-      return iter_.close_container(sub.iter_);
+    template <typename Element>
+    typename boost::enable_if<std::is_pointer<Element>, bool>::type pack(
+        const Element e) {
+      return iter_.append_basic(
+          element<typename std::remove_pointer<Element>::type>::code, e);
     }
 
-    template <typename Element>
-    bool pack(const std::vector<Element>& v) {
+    template <typename Container>
+    typename std::enable_if<has_const_iterator<Container>::value &&
+                                !is_string_type<Container>::value,
+                            bool>::type
+    pack(const Container& c) {
       message::packer sub;
-      static const constexpr auto signature =
-          element_signature<std::vector<Element>>::code;
-      static_assert(std::tuple_size<decltype(signature)>::value > 2,
-                    "Signature size must be greater than 2 characters long");
-      iter_.open_container(signature[0], &signature[1], sub.iter_);
-      for (auto& element : v) {
-        sub.pack(element);
-      }
 
+      static const constexpr auto signature =
+          element_signature<Container>::code;
+      if (iter_.open_container(signature[0], &signature[1], sub.iter_) ==
+          false) {
+        return false;
+      }
+      for (auto& element : c) {
+        if (!sub.pack(element)) {
+          return false;
+        }
+      }
       return iter_.close_container(sub.iter_);
     }
 
@@ -345,11 +337,15 @@ class message {
       return true;
     }
 
-    // dbus array / c++ vector unpack specialization
-    template <typename Element>
-    bool unpack(std::vector<Element>& s) {
+    template <typename Container>
+    typename std::enable_if<has_const_iterator<Container>::value &&
+                                !is_string_type<Container>::value,
+                            bool>::type
+    unpack(Container& c) {
+      std::cout << "test\n";
       auto top_level_arg_type = iter_.get_arg_type();
-      if (top_level_arg_type != element<std::vector<Element>>::code) {
+      constexpr auto type = element_signature<Container>::code[0];
+      if (top_level_arg_type != type) {
         return false;
       }
       message::unpacker sub;
@@ -357,8 +353,8 @@ class message {
       iter_.recurse(sub.iter_);
       auto arg_type = sub.iter_.get_arg_type();
       while (arg_type != DBUS_TYPE_INVALID) {
-        s.emplace_back();
-        if (!sub.unpack(s.back())) {
+        c.emplace_back();
+        if (!sub.unpack(c.back())) {
           return false;
         }
         arg_type = sub.iter_.get_arg_type();

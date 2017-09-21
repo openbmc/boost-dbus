@@ -231,10 +231,13 @@ struct element_signature {};
 template <typename Element>
 struct element_signature<
     Element,
-    typename std::enable_if<is_fixed_type<Element>::value ||
-                            is_string_type<Element>::value ||
-                            std::is_same<Element, dbus_variant>::value>::type> {
-  static auto constexpr code = std::array<char, 2>{{element<Element>::code, 0}};
+    typename std::enable_if<
+        is_fixed_type<typename std::remove_pointer<Element>::type>::value ||
+        is_string_type<typename std::remove_pointer<Element>::type>::value ||
+        std::is_same<typename std::remove_pointer<Element>::type,
+                     dbus_variant>::value>::type> {
+  static auto constexpr code = std::array<char, 2>{
+      {element<typename std::remove_pointer<Element>::type>::code, 0}};
 };
 
 template <typename T>
@@ -275,6 +278,17 @@ struct element_signature<
 // would be a string of ints
 template <typename Key, typename Value>
 struct element_signature<std::pair<Key, Value>> {
+  static auto const constexpr code =
+      concat(std::array<char, 2>{{'{', 0}},
+             concat(element_signature<Key>::code,
+                    concat(element_signature<Value>::code,
+                           std::array<char, 2>{{'}', 0}})));
+};
+
+// TODO(ed) THis can be rolled into the above definition, or genericized for all
+// pointer types.  bonus, specialize for all "pointer like" types
+template <typename Key, typename Value>
+struct element_signature<std::pair<Key, Value>*> {
   static auto const constexpr code =
       concat(std::array<char, 2>{{'{', 0}},
              concat(element_signature<Key>::code,

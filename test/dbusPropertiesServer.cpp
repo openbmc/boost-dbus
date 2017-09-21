@@ -128,7 +128,7 @@ TEST(DbusPropertiesInterface, ObjectServer) {
       std::make_shared<dbus::DbusObject>(bus, "/org/freedesktop/test1"));
   foo.register_object(
       std::make_shared<dbus::DbusObject>(bus, "/org/freedesktop/test2"));
-  std::atomic<int> completion_count(0);
+  int completion_count(0);
 
   std::array<std::string, 4> paths_to_test(
       {{"/", "/org", "/org/freedesktop", "/org/freedesktop/test1"}});

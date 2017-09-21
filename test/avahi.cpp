@@ -140,7 +140,7 @@ TEST(BOOST_DBUS, SingleSensorChanged) {
     s.unpack(object_name, values);
     EXPECT_EQ(object_name, "xyz.openbmc_project.Sensor.Value");
 
-    EXPECT_EQ(values.size(), 1);
+    EXPECT_EQ(values.size(), std::size_t{1});
     auto expected = std::pair<std::string, dbus::dbus_variant>("Value", 42);
     EXPECT_EQ(values[0], expected);
 
@@ -155,16 +155,13 @@ TEST(BOOST_DBUS, SingleSensorChanged) {
   auto signal_name = std::string("PropertiesChanged");
   auto m = dbus::message::new_signal(test_endpoint, signal_name);
 
-  m.pack("xyz.openbmc_project.Sensor.Value");
-
   std::vector<std::pair<std::string, dbus::dbus_variant>> map2;
 
   map2.emplace_back("Value", 42);
 
-  m.pack(map2);
+  auto removed = std::vector<std::string>();
+  EXPECT_EQ(m.pack("xyz.openbmc_project.Sensor.Value", map2, removed), true);
 
-  auto removed = std::vector<uint32_t>();
-  m.pack(removed);
   system_bus->async_send(m,
                          [&](boost::system::error_code ec, dbus::message s) {});
 
@@ -193,7 +190,7 @@ TEST(BOOST_DBUS, MultipleSensorChanged) {
     s.unpack(object_name, values);
     EXPECT_EQ(object_name, "xyz.openbmc_project.Sensor.Value");
 
-    EXPECT_EQ(values.size(), 1);
+    EXPECT_EQ(values.size(), std::size_t{1});
     auto expected = std::pair<std::string, dbus::dbus_variant>("Value", 42);
     EXPECT_EQ(values[0], expected);
     count++;

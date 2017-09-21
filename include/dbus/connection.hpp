@@ -113,6 +113,14 @@ class connection : public boost::asio::basic_io_object<connection_service> {
     return this->get_service().send(this->get_implementation(), m, t);
   }
 
+  template <typename... InputArgs>
+  message method_call(const dbus::endpoint& e, const InputArgs&... a) {
+    message m = dbus::message::new_call(e);
+    m.pack(a...);
+    return this->get_service().send(this->get_implementation(), m,
+                                    std::chrono::seconds(30));
+  }
+
   /// Send a message asynchronously.
   /**
  * @param m The message to send.
@@ -142,34 +150,39 @@ class connection : public boost::asio::basic_io_object<connection_service> {
   };
 
   template <typename MessageHandler, typename... InputArgs>
-  void async_method_call(MessageHandler handler, const dbus::endpoint& e,
+  auto async_method_call(MessageHandler handler, const dbus::endpoint& e,
                          const InputArgs&... a) {
     message m = dbus::message::new_call(e);
     if (!m.pack(a...)) {
       // TODO(ed) Set error code?
-
+      std::cerr << "Pack error\n";
     } else {
-      async_send(m, [&](boost::system::error_code ec, dbus::message r) {
-        // Make a copy of the error code so we can modify it
-        typedef typename function_traits<MessageHandler>::decayed_arg_types
-            function_tuple;
-        typedef typename strip_first_arg<function_tuple>::type unpack_type;
-        unpack_type response_args;
-        if (!ec) {
-          if (!unpack_into_tuple(response_args, r)) {
-            // Set error code
-            ec = boost::system::errc::make_error_code(
-                boost::system::errc::invalid_argument);
-          }
-        }
-        // Should this (the callback) be done in a try catch block?
-        // should throwing from a handler flow all the way to the io_service?
+      // explicit copy of handler here.  At this time, not clear why a copy is
+      // needed
+      return async_send(
+          m, [handler](boost::system::error_code ec, dbus::message r) {
+            // Make a copy of the error code so we can modify it
+            typedef typename function_traits<MessageHandler>::decayed_arg_types
+                function_tuple;
+            typedef typename strip_first_arg<function_tuple>::type unpack_type;
+            unpack_type response_args;
+            if (!ec) {
+              if (!unpack_into_tuple(response_args, r)) {
+                // Set error code
+                ec = boost::system::errc::make_error_code(
+                    boost::system::errc::invalid_argument);
+              }
+            }
+            // Should this (the callback) be done in a try catch block?
+            // should throwing from a handler flow all the way to the
+            // io_service?
 
-        // Note.  Callback is called whether or not the unpack was sucessful
-        // to allow the user to implement their own handling
-        index_apply<std::tuple_size<unpack_type>{}>(
-            [&](auto... Is) { handler(ec, std::get<Is>(response_args)...); });
-      });
+            // Note.  Callback is called whether or not the unpack was sucessful
+            // to allow the user to implement their own handling
+            index_apply<std::tuple_size<unpack_type>{}>([&](auto... Is) {
+              handler(ec, std::get<Is>(response_args)...);
+            });
+          });
     }
   }
 

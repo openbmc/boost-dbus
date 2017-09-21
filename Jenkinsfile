@@ -1,6 +1,4 @@
 #!groovy
-
-
 stage 'Debug Build'
 sh '''rm -rf build_debug
 	mkdir build_debug

@@ -27,7 +27,8 @@ class filter;
 class match;
 class connection;
 
-class connection_service : public boost::asio::detail::service_base<connection_service> {
+class connection_service
+    : public boost::asio::detail::service_base<connection_service> {
  public:
   typedef impl::connection implementation_type;
 
@@ -59,7 +60,8 @@ class connection_service : public boost::asio::detail::service_base<connection_s
   }
 
   template <typename Duration>
-  inline message send(implementation_type& impl, message& m, const Duration& timeout) {
+  inline message send(implementation_type& impl, message& m,
+                      const Duration& timeout) {
     if (timeout == Duration::zero()) {
       // TODO this can return false if it failed
       impl.send(m);
@@ -79,7 +81,8 @@ class connection_service : public boost::asio::detail::service_base<connection_s
     // begin asynchronous operation
     impl.start(this->get_io_service());
 
-    boost::asio::detail::async_result_init<MessageHandler, void(boost::system::error_code, message)>
+    boost::asio::detail::async_result_init<
+        MessageHandler, void(boost::system::error_code, message)>
         init(BOOST_ASIO_MOVE_CAST(MessageHandler)(handler));
     detail::async_send_op<typename boost::asio::handler_type<
         MessageHandler, void(boost::system::error_code, message)>::type>(
