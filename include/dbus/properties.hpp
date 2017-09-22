@@ -381,8 +381,8 @@ class DbusObject {
     }
 
     m.pack(object_name, sig);
-    // TODO(ed)
-    // conn->send(m, std::chrono::seconds(0));
+
+    conn->send(m, std::chrono::seconds(0));
   }
 
   auto get_interfaces() { return interfaces; }
