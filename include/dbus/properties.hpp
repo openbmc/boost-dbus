@@ -233,8 +233,8 @@ class DbusInterface {
       }
     }
 
-    const static dbus::endpoint endpoint("org.freedesktop.DBus", object_name,
-                                         "org.freedesktop.DBus.Properties");
+    dbus::endpoint endpoint("org.freedesktop.DBus", object_name,
+                            "org.freedesktop.DBus.Properties");
 
     auto m = dbus::message::new_signal(endpoint, "PropertiesChanged");
 
