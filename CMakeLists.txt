@@ -53,9 +53,9 @@ find_package (Threads)
 ##############
 # Install
 add_library(boost-dbus INTERFACE)
-target_include_directories(boost-dbus INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include ${DBUS_INCLUDE_DIRS})
+target_include_directories(boost-dbus INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include/ ${DBUS_INCLUDE_DIRS})
 target_link_libraries(boost-dbus INTERFACE ${DBUS_LIBRARIES})
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include DESTINATION include)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION include)
 
 ##############
 # Tests
