@@ -193,6 +193,16 @@ class DbusInterface {
     return properties_map;
   };
 
+  dbus_variant get_property(const std::string& property_name) {
+    auto property = properties_map.find(property_name);
+    if (property == properties_map.end()) {
+      // TODO(ed) property not found error
+      throw std::runtime_error("property not found");
+    } else {
+      return property->second;
+    }
+  }
+
   template <typename VALUE_TYPE>
   void set_property(const std::string& property_name, const VALUE_TYPE value,
                     UpdateType update_mode = UpdateType::VALUE_CHANGE_ONLY) {
