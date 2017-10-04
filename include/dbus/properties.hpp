@@ -327,7 +327,7 @@ class DbusObject {
             throw std::runtime_error("interface not found");
           } else {
             std::vector<std::pair<std::string, dbus_variant>> v;
-            for (auto& element : properties_iface->get_properties_map()) {
+            for (auto& element : interface_it->second->get_properties_map()) {
               v.emplace_back(element.first, element.second);
             }
             return std::tuple<
