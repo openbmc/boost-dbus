@@ -176,6 +176,12 @@ class message {
       return iter_.append_basic(element<string>::code, &c);
     }
 
+    // bool pack specialization
+    bool pack(bool c) {
+      int v = c;
+      return iter_.append_basic(element<bool>::code, &v);
+    }
+
     template <typename Key, typename Value>
     bool pack(const std::pair<Key, Value> element) {
       message::packer dict_entry;
@@ -251,6 +257,18 @@ class message {
       // ignoring return code here, as we might hit last element, and don't
       // really care because get_arg_type will return invalid if we call it
       // after we're over the struct boundary
+      iter_.next();
+      return true;
+    }
+
+    // bool unpack specialization
+    bool unpack(bool& s) {
+      if (iter_.get_arg_type() != element<bool>::code) {
+        return false;
+      }
+      int c;
+      iter_.get_basic(&c);
+      s = c;
       iter_.next();
       return true;
     }
