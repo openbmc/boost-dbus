@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <dbus/connection.hpp>
 #include <dbus/endpoint.hpp>
 #include <dbus/filter.hpp>
@@ -5,8 +6,7 @@
 #include <dbus/message.hpp>
 #include <dbus/properties.hpp>
 #include <functional>
-
-#include <unistd.h>
+#include <vector>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -329,29 +329,47 @@ TEST(DbusPropertiesInterface, PropertiesInterface) {
 
   iface->set_property("foo", (uint32_t)26);
 
-  dbus::endpoint test_daemon(bus->get_unique_name(), "/org/freedesktop/test1",
-                             "org.freedesktop.DBus.Properties");
-  dbus::message m = dbus::message::new_call(test_daemon, "Get");
-  m.pack("org.freedesktop.My.Interface", "foo");
+  dbus::endpoint get_dbus_properties(bus->get_unique_name(),
+                                     "/org/freedesktop/test1",
+                                     "org.freedesktop.DBus.Properties", "Get");
+  size_t outstanding_async_calls = 0;
 
-  bus->async_send(m, [&](const boost::system::error_code ec, dbus::message r) {
-    if (ec) {
-      std::string error;
-      r.unpack(error);
+  outstanding_async_calls++;
+  bus->async_method_call(
+      [&](const boost::system::error_code ec, dbus::dbus_variant value) {
+        outstanding_async_calls--;
+        if (ec) {
+          FAIL() << ec;
+        } else {
+          EXPECT_EQ(boost::get<uint32_t>(value), 26);
+        }
+        if (outstanding_async_calls == 0) {
+          io.stop();
+        }
+      },
+      get_dbus_properties, "org.freedesktop.My.Interface", "foo");
 
-      FAIL() << ec << error;
-    } else {
-      std::cout << r;
+  dbus::endpoint getall_dbus_properties(
+      bus->get_unique_name(), "/org/freedesktop/test1",
+      "org.freedesktop.DBus.Properties", "GetAll");
 
-      EXPECT_EQ(r.get_type(), "method_return");
-
-      dbus::dbus_variant value;
-      r.unpack(value);
-
-      EXPECT_EQ(boost::get<uint32_t>(value), 26);
-    }
-    io.stop();
-  });
+  outstanding_async_calls++;
+  bus->async_method_call(
+      [&](const boost::system::error_code ec,
+          std::vector<std::pair<std::string, dbus::dbus_variant>> value) {
+        outstanding_async_calls--;
+        if (ec) {
+          FAIL() << ec;
+        } else {
+          EXPECT_EQ(value.size(), 1);
+          EXPECT_EQ(value[0].first, "foo");
+          EXPECT_EQ(value[0].second, dbus::dbus_variant((uint32_t)26));
+        }
+        if (outstanding_async_calls == 0) {
+          io.stop();
+        }
+      },
+      getall_dbus_properties, "org.freedesktop.My.Interface");
 
   io.run();
 }
