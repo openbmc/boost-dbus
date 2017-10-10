@@ -1,3 +1,6 @@
+#ifndef DBUS_PROPERTIES_HPP
+#define DBUS_PROPERTIES_HPP
+
 #include <dbus/connection.hpp>
 #include <dbus/filter.hpp>
 #include <dbus/match.hpp>
@@ -683,3 +686,5 @@ class DbusObjectServer {
   std::unique_ptr<dbus::filter> method_filter;
 };
 }
+
+#endif /* DBUS_PROPERTIES_HPP */
