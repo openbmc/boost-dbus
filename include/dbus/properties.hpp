@@ -519,7 +519,7 @@ class DbusObjectServer {
     typedef std::vector<std::pair<std::string, properties_dict>>
         interfaces_dict;
 
-    std::vector<std::pair<std::string, interfaces_dict>> dict;
+    std::vector<std::pair<object_path, interfaces_dict>> dict;
 
     for (auto& object : objects) {
       interfaces_dict i;
@@ -529,10 +529,9 @@ class DbusObjectServer {
         for (auto& property : interface.second->get_properties_map()) {
           p.push_back(property);
         }
-
         i.emplace_back(interface.second->get_interface_name(), std::move(p));
       }
-      dict.emplace_back(object->object_name, std::move(i));
+      dict.emplace_back(object_path{object->object_name}, std::move(i));
     }
     auto ret = dbus::message::new_return(m);
     ret.pack(dict);

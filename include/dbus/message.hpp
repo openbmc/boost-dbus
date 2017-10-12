@@ -198,6 +198,11 @@ class message {
       return iter_.close_container(dict_entry.iter_);
     }
 
+    bool pack(const object_path& e) {
+      const char* c = e.value.c_str();
+      return iter_.append_basic(element<object_path>::code, &c);
+    }
+
     bool pack(const string& e) {
       const char* c = e.c_str();
       return pack(c);
