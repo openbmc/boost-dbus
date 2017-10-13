@@ -365,7 +365,6 @@ class message {
                                 !is_string_type<Container>::value,
                             bool>::type
     unpack(Container& c) {
-      std::cout << "test\n";
       auto top_level_arg_type = iter_.get_arg_type();
       constexpr auto type = element_signature<Container>::code[0];
       if (top_level_arg_type != type) {
