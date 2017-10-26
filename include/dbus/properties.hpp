@@ -479,7 +479,6 @@ class DbusObjectServer {
   std::shared_ptr<dbus::connection>& get_connection() { return conn; }
   void on_introspect(const boost::system::error_code ec, dbus::message m) {
     auto xml = get_xml_for_path(m.get_path());
-    std::cout << "path: " << m.get_path() << "\n" << xml << "\n";
     auto ret = dbus::message::new_return(m);
     ret.pack(xml);
     conn->async_send(
@@ -492,7 +491,6 @@ class DbusObjectServer {
   }
 
   void on_method_call(const boost::system::error_code ec, dbus::message m) {
-    std::cout << "on method call\n";
     if (ec) {
       std::cerr << "on_method_call error: " << ec << "\n";
     } else {
