@@ -552,6 +552,10 @@ class DbusObjectServer {
     objects.emplace_back(object);
   }
 
+  void remove_object(std::shared_ptr<DbusObject> object) {
+    std::remove(objects.begin(), objects.end(), object);
+  }
+
   std::string get_xml_for_path(const std::string& path) {
     std::string newpath(path);
 
