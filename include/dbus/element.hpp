@@ -40,6 +40,7 @@ typedef boost::variant<std::string, bool, byte, int16, uint16, int32, uint32,
 
 struct object_path {
   string value;
+  bool operator<(const object_path& b) const { return value < b.value; }
 };
 struct signature {
   string value;
@@ -51,148 +52,120 @@ struct signature {
 
 template <typename InvalidType>
 struct element {
-  static const int code = DBUS_TYPE_INVALID;
+  static constexpr int code = DBUS_TYPE_INVALID;
 };
 
 template <>
 struct element<bool> {
-  static const int code = DBUS_TYPE_BOOLEAN;
+  static constexpr int code = DBUS_TYPE_BOOLEAN;
 };
 
 template <>
 struct element<byte> {
-  static const int code = DBUS_TYPE_BYTE;
+  static constexpr int code = DBUS_TYPE_BYTE;
 };
 
 template <>
 struct element<int16> {
-  static const int code = DBUS_TYPE_INT16;
+  static constexpr int code = DBUS_TYPE_INT16;
 };
 
 template <>
 struct element<uint16> {
-  static const int code = DBUS_TYPE_UINT16;
+  static constexpr int code = DBUS_TYPE_UINT16;
 };
 
 template <>
 struct element<int32> {
-  static const int code = DBUS_TYPE_INT32;
+  static constexpr int code = DBUS_TYPE_INT32;
 };
 
 template <>
 struct element<uint32> {
-  static const int code = DBUS_TYPE_UINT32;
+  static constexpr int code = DBUS_TYPE_UINT32;
 };
 
 template <>
 struct element<int64> {
-  static const int code = DBUS_TYPE_INT64;
+  static constexpr int code = DBUS_TYPE_INT64;
 };
 
 template <>
 struct element<uint64> {
-  static const int code = DBUS_TYPE_UINT64;
+  static constexpr int code = DBUS_TYPE_UINT64;
 };
 
 template <>
 struct element<double> {
-  static const int code = DBUS_TYPE_DOUBLE;
+  static constexpr int code = DBUS_TYPE_DOUBLE;
 };
 
 template <>
 struct element<string> {
-  static const int code = DBUS_TYPE_STRING;
+  static constexpr int code = DBUS_TYPE_STRING;
 };
 
 template <>
 struct element<dbus_variant> {
-  static const int code = DBUS_TYPE_VARIANT;
+  static constexpr int code = DBUS_TYPE_VARIANT;
 };
 
 template <>
 struct element<object_path> {
-  static const int code = DBUS_TYPE_OBJECT_PATH;
+  static constexpr int code = DBUS_TYPE_OBJECT_PATH;
 };
 
 template <>
 struct element<signature> {
-  static const int code = DBUS_TYPE_SIGNATURE;
+  static constexpr int code = DBUS_TYPE_SIGNATURE;
 };
 
 template <typename Element>
 struct element<std::vector<Element>> {
-  static const int code = DBUS_TYPE_ARRAY;
+  static constexpr int code = DBUS_TYPE_ARRAY;
 };
 
 template <typename InvalidType>
-struct is_fixed_type {
-  static const int value = false;
-};
+struct is_fixed_type : std::false_type {};
 
 template <>
-struct is_fixed_type<bool> {
-  static const int value = true;
-};
+struct is_fixed_type<bool> : std::true_type {};
 
 template <>
-struct is_fixed_type<byte> {
-  static const int value = true;
-};
+struct is_fixed_type<byte> : std::true_type {};
 
 template <>
-struct is_fixed_type<int16> {
-  static const int value = true;
-};
+struct is_fixed_type<int16> : std::true_type {};
 
 template <>
-struct is_fixed_type<uint16> {
-  static const int value = true;
-};
+struct is_fixed_type<uint16> : std::true_type {};
 
 template <>
-struct is_fixed_type<int32> {
-  static const int value = true;
-};
+struct is_fixed_type<int32> : std::true_type {};
 
 template <>
-struct is_fixed_type<uint32> {
-  static const int value = true;
-};
+struct is_fixed_type<uint32> : std::true_type {};
 
 template <>
-struct is_fixed_type<int64> {
-  static const int value = true;
-};
+struct is_fixed_type<int64> : std::true_type {};
 
 template <>
-struct is_fixed_type<uint64> {
-  static const int value = true;
-};
+struct is_fixed_type<uint64> : std::true_type {};
 
 template <>
-struct is_fixed_type<double> {
-  static const int value = true;
-};
+struct is_fixed_type<double> : std::true_type {};
 
 template <typename InvalidType>
-struct is_string_type {
-  static const bool value = false;
-};
+struct is_string_type : std::false_type {};
 
 template <>
-struct is_string_type<string> {
-  static const bool value = true;
-};
+struct is_string_type<string> : std::true_type {};
 
 template <>
-struct is_string_type<object_path> {
-  static const bool value = true;
-};
+struct is_string_type<object_path> : std::true_type {};
 
 template <>
-struct is_string_type<signature> {
-  static const bool value = true;
-};
+struct is_string_type<signature> : std::true_type {};
 
 template <std::size_t... Is>
 struct seq {};
@@ -231,13 +204,18 @@ struct element_signature {};
 template <typename Element>
 struct element_signature<
     Element,
-    typename std::enable_if<
-        is_fixed_type<typename std::remove_pointer<Element>::type>::value ||
-        is_string_type<typename std::remove_pointer<Element>::type>::value ||
-        std::is_same<typename std::remove_pointer<Element>::type,
-                     dbus_variant>::value>::type> {
-  static auto constexpr code = std::array<char, 2>{
-      {element<typename std::remove_pointer<Element>::type>::code, 0}};
+    typename std::enable_if<is_fixed_type<Element>::value ||
+                            is_string_type<Element>::value ||
+                            std::is_same<Element, dbus_variant>::value>::type> {
+  static auto constexpr code = std::array<char, 2>{{element<Element>::code, 0}};
+};
+
+template <typename Element>
+struct element_signature<
+    Element, typename std::enable_if<std::is_pointer<Element>::value>::type> {
+  static auto const constexpr code =
+
+      element_signature<typename std::remove_pointer<Element>::type>::code;
 };
 
 template <typename T>
@@ -252,8 +230,7 @@ struct has_const_iterator {
   static no test(...);
 
  public:
-  static const bool value = sizeof(test<T>(0)) == sizeof(yes);
-  typedef T type;
+  static constexpr bool value = sizeof(test<T>(0)) == sizeof(yes);
 };
 
 // Specialization for "container" types.  Containers are defined as anything
@@ -278,17 +255,6 @@ struct element_signature<
 // would be a string of ints
 template <typename Key, typename Value>
 struct element_signature<std::pair<Key, Value>> {
-  static auto const constexpr code =
-      concat(std::array<char, 2>{{'{', 0}},
-             concat(element_signature<Key>::code,
-                    concat(element_signature<Value>::code,
-                           std::array<char, 2>{{'}', 0}})));
-};
-
-// TODO(ed) THis can be rolled into the above definition, or genericized for all
-// pointer types.  bonus, specialize for all "pointer like" types
-template <typename Key, typename Value>
-struct element_signature<std::pair<Key, Value>*> {
   static auto const constexpr code =
       concat(std::array<char, 2>{{'{', 0}},
              concat(element_signature<Key>::code,
