@@ -139,16 +139,15 @@ class message {
     }
 
     template <typename Element>
-    typename boost::enable_if<is_fixed_type<Element>, bool>::type pack(
+    typename std::enable_if<is_fixed_type<Element>::value, bool>::type pack(
         const Element& e) {
       return iter_.append_basic(element<Element>::code, &e);
     }
 
     template <typename Element>
-    typename boost::enable_if<std::is_pointer<Element>, bool>::type pack(
+    typename std::enable_if<std::is_pointer<Element>::value, bool>::type pack(
         const Element e) {
-      return iter_.append_basic(
-          element<typename std::remove_pointer<Element>::type>::code, e);
+      return pack(*e);
     }
 
     template <typename Container>
@@ -214,10 +213,6 @@ class message {
           [&](auto val) {
             static const constexpr auto sig =
                 element_signature<decltype(val)>::code;
-            static_assert(
-                std::tuple_size<decltype(sig)>::value == 2,
-                "Element signature for dbus_variant too long.  Expected "
-                "length of 1");
             return &sig[0];
           },
           v);
@@ -253,7 +248,7 @@ class message {
 
     // Basic type unpack
     template <typename Element>
-    typename boost::enable_if<is_fixed_type<Element>, bool>::type unpack(
+    typename std::enable_if<is_fixed_type<Element>::value, bool>::type unpack(
         Element& e) {
       if (iter_.get_arg_type() != element<Element>::code) {
         return false;
@@ -360,8 +355,48 @@ class message {
       return true;
     }
 
+    template <typename T>
+    struct has_emplace_method
+
+    {
+      struct dummy {};
+
+      template <typename C, typename P>
+      static auto test(P* p)
+          -> decltype(std::declval<C>().emplace(*p), std::true_type());
+
+      template <typename, typename>
+      static std::false_type test(...);
+
+      typedef decltype(test<T, dummy>(nullptr)) type;
+
+      static constexpr bool value =
+          std::is_same<std::true_type,
+                       decltype(test<T, dummy>(nullptr))>::value;
+    };
+
+    template <typename T>
+    struct has_emplace_back_method
+
+    {
+      struct dummy {};
+
+      template <typename C, typename P>
+      static auto test(P* p)
+          -> decltype(std::declval<C>().emplace_back(*p), std::true_type());
+
+      template <typename, typename>
+      static std::false_type test(...);
+
+      typedef decltype(test<T, dummy>(nullptr)) type;
+
+      static constexpr bool value =
+          std::is_same<std::true_type,
+                       decltype(test<T, dummy>(nullptr))>::value;
+    };
+
     template <typename Container>
-    typename std::enable_if<has_const_iterator<Container>::value &&
+    typename std::enable_if<has_emplace_back_method<Container>::value &&
                                 !is_string_type<Container>::value,
                             bool>::type
     unpack(Container& c) {
@@ -373,13 +408,42 @@ class message {
       message::unpacker sub;
 
       iter_.recurse(sub.iter_);
-      auto arg_type = sub.iter_.get_arg_type();
-      while (arg_type != DBUS_TYPE_INVALID) {
+      while (sub.iter_.get_arg_type() != DBUS_TYPE_INVALID) {
         c.emplace_back();
         if (!sub.unpack(c.back())) {
           return false;
         }
-        arg_type = sub.iter_.get_arg_type();
+      }
+      iter_.next();
+      return true;
+    }
+
+    template <typename Container>
+    typename std::enable_if<has_emplace_method<Container>::value &&
+                                !is_string_type<Container>::value,
+                            bool>::type
+    unpack(Container& c) {
+      auto top_level_arg_type = iter_.get_arg_type();
+      constexpr auto type = element_signature<Container>::code[0];
+      if (top_level_arg_type != type) {
+        return false;
+      }
+      message::unpacker sub;
+
+      iter_.recurse(sub.iter_);
+      while (sub.iter_.get_arg_type() != DBUS_TYPE_INVALID) {
+        // TODO(ed) this is done as an unpack to a stack variable, then an
+        // emplace move into the container (as the key isn't known until the
+        // unpack is done)  This could be made more efficient by unpacking only
+        // the key type into a temporary, using find on the temporary, then
+        // unpacking directly into the map type, instead of unpacking both key
+        // and value.
+
+        typename Container::value_type t;
+        if (!sub.unpack(t)) {
+          return false;
+        }
+        c.emplace(std::move(t));
       }
       iter_.next();
       return true;
