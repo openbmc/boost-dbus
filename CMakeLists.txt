@@ -53,7 +53,11 @@ find_package (Threads)
 ##############
 # Install
 add_library(boost-dbus INTERFACE)
-target_include_directories(boost-dbus INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include/ ${DBUS_INCLUDE_DIRS})
+target_include_directories(boost-dbus INTERFACE
+                           $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+                           $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>
+			   ${DBUS_INCLUDE_DIRS})
+
 target_link_libraries(boost-dbus INTERFACE ${DBUS_LIBRARIES})
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION include)
 
@@ -80,3 +84,25 @@ target_link_libraries(dbustests ${CMAKE_THREAD_LIBS_INIT})
 add_test(dbustests dbustests "--gtest_output=xml:${test_name}.xml")
 
 target_link_libraries(dbustests boost-dbus)
+
+
+# export targets for find_package config mode
+export(TARGETS boost-dbus
+       FILE ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}Targets.cmake)
+
+file(WRITE
+    ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}Config.cmake
+    "include(\${CMAKE_CURRENT_LIST_DIR}/${CMAKE_PROJECT_NAME}Targets.cmake)\n")
+
+install(FILES
+        ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}Config.cmake
+        DESTINATION lib/cmake/${CMAKE_PROJECT_NAME})
+
+install(TARGETS boost-dbus
+        EXPORT ${CMAKE_PROJECT_NAME}Targets
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+install(EXPORT ${CMAKE_PROJECT_NAME}Targets
+	DESTINATION lib/cmake/${CMAKE_PROJECT_NAME})
