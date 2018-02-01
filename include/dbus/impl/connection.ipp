@@ -127,6 +127,8 @@ class connection {
       // TODO
     }
   }
+
+  void flush(void) { dbus_connection_flush(conn); }
 };
 
 }  // namespace impl

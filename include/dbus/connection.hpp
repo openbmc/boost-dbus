@@ -186,6 +186,8 @@ class connection : public boost::asio::basic_io_object<connection_service> {
     }
   }
 
+  void flush(void) { this->get_implementation().flush(); };
+
   /// Create a new match.
   void new_match(match& m) {
     this->get_service().new_match(this->get_implementation(), m);

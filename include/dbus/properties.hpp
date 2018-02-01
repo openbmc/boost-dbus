@@ -551,6 +551,8 @@ class DbusObjectServer {
     std::remove(objects.begin(), objects.end(), object);
   }
 
+  void flush(void) { conn->flush(); }
+
   std::string get_xml_for_path(const std::string& path) {
     std::string newpath(path);
 
